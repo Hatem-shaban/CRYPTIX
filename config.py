@@ -70,6 +70,36 @@ MAX_DAILY_LOSS = 50.0  # Maximum daily loss in USD
 MAX_CONSECUTIVE_LOSSES = 5  # Stop trading after this many losses
 MAX_PORTFOLIO_EXPOSURE = 80.0  # Maximum percentage of portfolio at risk
 
+# Intelligent Timing System (AI TRADING WOLF)
+TIMING_SYSTEM = {
+    'base_interval': 300,           # Base scanning interval (5 minutes)
+    'regime_check_interval': 300,   # Market regime check frequency (5 minutes)
+    'breakout_scan_threshold': 40,  # Minimum score for breakout opportunities
+    'hunting_mode_triggers': 3,     # Number of triggers needed for hunting mode
+    'max_quick_scans': 5,          # Maximum quick scans before full scan
+    'volatility_thresholds': {
+        'extreme': 1.5,            # Hourly volatility threshold for extreme regime
+        'volatile': 0.8,           # Hourly volatility threshold for volatile regime
+        'quiet': 0.3               # Hourly volatility threshold for quiet regime
+    },
+    'volume_surge_thresholds': {
+        'extreme': 3.0,            # Volume surge multiplier for extreme conditions
+        'volatile': 2.0,           # Volume surge multiplier for volatile conditions
+        'significant': 1.5         # Volume surge multiplier for significant activity
+    }
+}
+
+# Market Hours for Enhanced Timing
+MARKET_HOURS = {
+    'us_market': list(range(16, 24)) + list(range(0, 1)),  # 2:30 PM - 11 PM Cairo time
+    'asian_market': list(range(2, 10)),                     # 2 AM - 10 AM Cairo time
+    'european_market': list(range(10, 18)),                 # 10 AM - 6 PM Cairo time
+    'high_activity_hours': list(range(14, 23)),             # Peak trading hours
+}
+
+# Auto Trading Settings
+AUTO_TRADING = True  # Enable automatic trade execution
+
 # API Rate Limiting (NEW)
 API_RATE_LIMITS = {
     'calls_per_minute': 1200,  # Binance limit

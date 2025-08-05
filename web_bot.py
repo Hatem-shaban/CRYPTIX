@@ -456,7 +456,17 @@ bot_status = {
     'monitored_pairs': {},  # Track all monitored pairs' status
     'trading_strategy': 'ADAPTIVE',  # Current trading strategy (STRICT, MODERATE, ADAPTIVE)
     'next_signal_time': None,  # Track when next signal will be generated
-    'signal_interval': 1800,  # Signal generation interval in seconds (30 minutes)
+    'signal_interval': 300,  # Base signal generation interval in seconds (5 minutes - adaptive)
+    'market_regime': 'NORMAL',  # Current market regime (QUIET, NORMAL, VOLATILE, EXTREME)
+    'hunting_mode': False,  # Aggressive opportunity hunting mode
+    'last_volatility_check': None,  # Track when we last checked volatility
+    'adaptive_intervals': {
+        'QUIET': 1800,      # 30 minutes during quiet markets
+        'NORMAL': 900,      # 15 minutes during normal markets  
+        'VOLATILE': 300,    # 5 minutes during volatile markets
+        'EXTREME': 60,      # 1 minute during extreme volatility
+        'HUNTING': 30       # 30 seconds when hunting opportunities
+    },
     'trading_summary': {
         'total_revenue': 0.0,
         'successful_trades': 0,
@@ -823,6 +833,263 @@ def fetch_data(symbol="BTCUSDT", interval="1h", limit=100):
         log_error_to_csv(error_msg, "DATA_FETCH_ERROR", "fetch_data", "ERROR")
         bot_status['errors'].append(error_msg)
         return None
+
+def detect_market_regime():
+    """Professional market regime detection for intelligent timing"""
+    try:
+        print("\n=== Detecting Market Regime ===")
+        
+        # Get multi-timeframe data for regime analysis
+        btc_1h = fetch_data("BTCUSDT", "1h", 48)  # 48 hours
+        btc_5m = fetch_data("BTCUSDT", "5m", 288)  # 24 hours in 5-min candles
+        
+        if btc_1h is None or btc_5m is None or len(btc_1h) < 24 or len(btc_5m) < 144:
+            return 'NORMAL'  # Default regime
+        
+        # Calculate market volatility measures
+        hourly_vol = btc_1h['close'].pct_change().rolling(24).std() * np.sqrt(24 * 365)
+        five_min_vol = btc_5m['close'].pct_change().rolling(144).std() * np.sqrt(288 * 365)
+        
+        current_hourly_vol = hourly_vol.iloc[-1] if not pd.isna(hourly_vol.iloc[-1]) else 0.5
+        current_5m_vol = five_min_vol.iloc[-1] if not pd.isna(five_min_vol.iloc[-1]) else 0.5
+        
+        # Volume surge detection
+        avg_volume_1h = btc_1h['volume'].rolling(24).mean().iloc[-1]
+        current_volume_1h = btc_1h['volume'].iloc[-1]
+        volume_surge = current_volume_1h / avg_volume_1h if avg_volume_1h > 0 else 1
+        
+        # Price movement analysis
+        price_change_1h = abs(btc_1h['close'].pct_change().iloc[-1])
+        price_change_24h = abs((btc_1h['close'].iloc[-1] - btc_1h['close'].iloc[-24]) / btc_1h['close'].iloc[-24])
+        
+        # Market regime classification
+        if (current_hourly_vol > 1.5 or current_5m_vol > 2.0 or 
+            volume_surge > 3.0 or price_change_1h > 0.05):
+            regime = 'EXTREME'
+        elif (current_hourly_vol > 0.8 or current_5m_vol > 1.2 or 
+              volume_surge > 2.0 or price_change_1h > 0.03):
+            regime = 'VOLATILE'
+        elif (current_hourly_vol < 0.3 and current_5m_vol < 0.5 and 
+              volume_surge < 1.2 and price_change_1h < 0.01):
+            regime = 'QUIET'
+        else:
+            regime = 'NORMAL'
+        
+        # Store regime data for analytics
+        bot_status['market_regime'] = regime
+        bot_status['volatility_metrics'] = {
+            'hourly_vol': current_hourly_vol,
+            'five_min_vol': current_5m_vol,
+            'volume_surge': volume_surge,
+            'price_change_1h': price_change_1h,
+            'price_change_24h': price_change_24h
+        }
+        
+        print(f"Market Regime: {regime}")
+        print(f"Hourly Volatility: {current_hourly_vol:.3f}")
+        print(f"5min Volatility: {current_5m_vol:.3f}")
+        print(f"Volume Surge: {volume_surge:.2f}x")
+        print(f"1h Price Change: {price_change_1h:.3f}")
+        
+        return regime
+        
+    except Exception as e:
+        log_error_to_csv(str(e), "REGIME_DETECTION", "detect_market_regime", "ERROR")
+        return 'NORMAL'
+
+def detect_breakout_opportunities():
+    """Real-time breakout and momentum opportunity detection"""
+    try:
+        opportunities = []
+        major_pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT"]
+        
+        for symbol in major_pairs:
+            try:
+                # Get short-term data for breakout detection
+                df_5m = fetch_data(symbol, "5m", 144)  # 12 hours
+                df_1m = fetch_data(symbol, "1m", 60)   # 1 hour
+                
+                if df_5m is None or df_1m is None or len(df_5m) < 50 or len(df_1m) < 30:
+                    continue
+                
+                current_price = df_1m['close'].iloc[-1]
+                
+                # Bollinger Band breakout detection
+                bb_upper = df_5m['bb_upper'].iloc[-1]
+                bb_lower = df_5m['bb_lower'].iloc[-1]
+                bb_middle = df_5m['bb_middle'].iloc[-1]
+                
+                # Volume spike detection
+                avg_volume = df_5m['volume'].rolling(48).mean().iloc[-1]
+                current_volume = df_1m['volume'].iloc[-1]
+                volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+                
+                # Momentum detection
+                momentum_5m = (current_price - df_5m['close'].iloc[-6]) / df_5m['close'].iloc[-6]  # 30min momentum
+                momentum_1m = (current_price - df_1m['close'].iloc[-10]) / df_1m['close'].iloc[-10]  # 10min momentum
+                
+                # RSI divergence detection
+                rsi_current = df_5m['rsi'].iloc[-1]
+                rsi_prev = df_5m['rsi'].iloc[-12]  # 1 hour ago
+                
+                opportunity_score = 0
+                signals = []
+                
+                # Breakout signals
+                if current_price > bb_upper and volume_ratio > 2.0:
+                    opportunity_score += 30
+                    signals.append("BB_BREAKOUT_UP")
+                elif current_price < bb_lower and volume_ratio > 2.0:
+                    opportunity_score += 30
+                    signals.append("BB_BREAKOUT_DOWN")
+                
+                # Momentum signals
+                if momentum_5m > 0.02 and momentum_1m > 0.01:
+                    opportunity_score += 25
+                    signals.append("STRONG_MOMENTUM_UP")
+                elif momentum_5m < -0.02 and momentum_1m < -0.01:
+                    opportunity_score += 25
+                    signals.append("STRONG_MOMENTUM_DOWN")
+                
+                # Volume surge
+                if volume_ratio > 3.0:
+                    opportunity_score += 20
+                    signals.append("VOLUME_SURGE")
+                
+                # RSI extremes with volume
+                if rsi_current < 25 and volume_ratio > 1.5:
+                    opportunity_score += 15
+                    signals.append("RSI_OVERSOLD_VOLUME")
+                elif rsi_current > 75 and volume_ratio > 1.5:
+                    opportunity_score += 15
+                    signals.append("RSI_OVERBOUGHT_VOLUME")
+                
+                if opportunity_score >= 40:  # High opportunity threshold
+                    opportunities.append({
+                        'symbol': symbol,
+                        'score': opportunity_score,
+                        'signals': signals,
+                        'price': current_price,
+                        'volume_ratio': volume_ratio,
+                        'momentum_5m': momentum_5m,
+                        'momentum_1m': momentum_1m,
+                        'rsi': rsi_current,
+                        'bb_position': 'ABOVE' if current_price > bb_upper else 'BELOW' if current_price < bb_lower else 'INSIDE'
+                    })
+                    
+            except Exception as e:
+                log_error_to_csv(str(e), "BREAKOUT_DETECTION", f"detect_breakout_opportunities_{symbol}", "WARNING")
+                continue
+        
+        # Sort by opportunity score
+        opportunities.sort(key=lambda x: x['score'], reverse=True)
+        
+        if opportunities:
+            print(f"\n=== BREAKOUT OPPORTUNITIES DETECTED ===")
+            for opp in opportunities[:3]:  # Top 3
+                print(f"{opp['symbol']}: Score {opp['score']}, Signals: {', '.join(opp['signals'])}")
+        
+        return opportunities
+        
+    except Exception as e:
+        log_error_to_csv(str(e), "BREAKOUT_DETECTION", "detect_breakout_opportunities", "ERROR")
+        return []
+
+def calculate_smart_interval():
+    """Calculate intelligent scanning interval based on market conditions"""
+    try:
+        # Get current market regime
+        current_regime = bot_status.get('market_regime', 'NORMAL')
+        base_intervals = bot_status.get('adaptive_intervals', {
+            'QUIET': 1800, 'NORMAL': 900, 'VOLATILE': 300, 'EXTREME': 60, 'HUNTING': 30
+        })
+        
+        # Check for hunting mode triggers
+        hunting_triggers = 0
+        
+        # Time-based factors (market opening/closing times)
+        current_hour = get_cairo_time().hour
+        
+        # US market hours (convert to Cairo time: UTC+2)
+        us_market_hours = list(range(16, 24)) + list(range(0, 1))  # 2:30 PM - 11 PM Cairo time
+        asian_market_hours = list(range(2, 10))  # 2 AM - 10 AM Cairo time
+        
+        if current_hour in us_market_hours:
+            hunting_triggers += 1  # US market active
+        if current_hour in asian_market_hours:
+            hunting_triggers += 1  # Asian market active
+            
+        # Check for high volatility events
+        volatility_metrics = bot_status.get('volatility_metrics', {})
+        if (volatility_metrics.get('volume_surge', 1) > 2.5 or 
+            volatility_metrics.get('price_change_1h', 0) > 0.03):
+            hunting_triggers += 2
+            
+        # Check for recent profitable trades (momentum)
+        recent_trades = bot_status.get('trading_summary', {}).get('trades_history', [])
+        if len(recent_trades) >= 2:
+            recent_profitable = sum(1 for trade in recent_trades[-2:] if trade.get('profit_loss', 0) > 0)
+            if recent_profitable >= 2:
+                hunting_triggers += 1  # Hot streak
+                
+        # Determine final interval
+        if hunting_triggers >= 3 or current_regime == 'EXTREME':
+            bot_status['hunting_mode'] = True
+            interval = base_intervals.get('HUNTING', 30)
+            mode = 'HUNTING'
+        else:
+            bot_status['hunting_mode'] = False
+            interval = base_intervals.get(current_regime, 900)
+            mode = current_regime
+            
+        # Log interval decision
+        print(f"\n=== Smart Interval Calculation ===")
+        print(f"Market Regime: {current_regime}")
+        print(f"Hunting Triggers: {hunting_triggers}")
+        print(f"Selected Mode: {mode}")
+        print(f"Interval: {interval} seconds ({interval/60:.1f} minutes)")
+        
+        return interval, mode
+        
+    except Exception as e:
+        log_error_to_csv(str(e), "SMART_INTERVAL", "calculate_smart_interval", "ERROR")
+        return 900, 'NORMAL'  # Default fallback
+
+def should_scan_now():
+    """Intelligent decision on whether to scan now based on market conditions"""
+    try:
+        current_time = get_cairo_time()
+        
+        # Always scan if no previous scan time
+        if not bot_status.get('next_signal_time'):
+            return True, "Initial scan"
+            
+        # Check if scheduled time has passed
+        if current_time >= bot_status['next_signal_time']:
+            return True, "Scheduled scan time reached"
+            
+        # Override scheduling for extreme conditions
+        last_regime_check = bot_status.get('last_volatility_check')
+        if (not last_regime_check or 
+            (current_time - last_regime_check).total_seconds() > 300):  # Check regime every 5 minutes
+            
+            regime = detect_market_regime()
+            bot_status['last_volatility_check'] = current_time
+            
+            if regime in ['EXTREME', 'VOLATILE']:
+                return True, f"Market regime override: {regime}"
+                
+        # Check for breakout opportunities in extreme volatility
+        if bot_status.get('market_regime') == 'EXTREME':
+            opportunities = detect_breakout_opportunities()
+            if opportunities:
+                return True, f"Breakout opportunity detected: {opportunities[0]['symbol']}"
+                
+        return False, "Waiting for next scheduled scan"
+        
+    except Exception as e:
+        log_error_to_csv(str(e), "SCAN_DECISION", "should_scan_now", "ERROR")
+        return True, "Error in scan decision - defaulting to scan"
 
 def scan_trading_pairs(base_assets=None, quote_asset=None, min_volume_usdt=None):
     """Scan trading pairs using configuration parameters"""
@@ -1821,13 +2088,16 @@ def scan_trading_pairs(base_assets, quote_asset="USDT", min_volume_usdt=1000000)
     return opportunities
 
 def trading_loop():
-    """Enhanced trading loop with multi-coin scanning and robust error handling"""
+    """Professional AI Trading Wolf - Intelligent Timing and Opportunity Hunting"""
     bot_status['running'] = True
     consecutive_errors = 0
     max_consecutive_errors = 5
-    error_sleep_time = 300  # 5 minutes initial sleep on error
-    scan_interval = 1800  # Scan every 30 minutes
-    print("\n=== Starting Trading Loop ===")  # Debug log
+    error_sleep_time = 60  # Start with 1 minute on errors
+    
+    print("\n🐺 === AI TRADING WOLF ACTIVATED ===")
+    print("🎯 Professional timing system engaged")
+    print("📊 Market regime detection online")
+    print("⚡ Breakout opportunity scanning active")
     
     # Initialize trading summary if not exists
     if 'trading_summary' not in bot_status:
@@ -1843,40 +2113,94 @@ def trading_loop():
             'trades_history': []
         }
     
-    # Initialize multi-coin tracking
+    # Initialize multi-coin tracking and regime detection
     bot_status['monitored_pairs'] = {}
+    bot_status['market_regime'] = 'NORMAL'
+    bot_status['hunting_mode'] = False
     
-    # Set initial next signal time
-    bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=scan_interval)
-    bot_status['signal_interval'] = scan_interval
+    # Initial market regime detection
+    initial_regime = detect_market_regime()
+    initial_interval, initial_mode = calculate_smart_interval()
+    bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=initial_interval)
+    bot_status['signal_interval'] = initial_interval
+    
+    print(f"🎯 Initial scan mode: {initial_mode} ({initial_interval}s)")
+    print(f"📅 Next scan: {format_cairo_time(bot_status['next_signal_time'])}")
+    
+    last_major_scan = get_cairo_time()
+    quick_scan_count = 0
     
     while bot_status['running']:
         try:
+            current_time = get_cairo_time()
+            
             # Health check - ensure API connection is valid
             if not bot_status['api_connected']:
                 initialize_client()
                 if not bot_status['api_connected']:
                     raise Exception("Failed to connect to API")
             
-            print("\n=== Scanning Trading Pairs ===")
-            print(f"Time: {format_cairo_time()}")
+            # Intelligent scan decision
+            should_scan, scan_reason = should_scan_now()
             
-            # Scan for trading opportunities across multiple pairs
-            opportunities = scan_trading_pairs(
-                base_assets=["BTC", "ETH", "BNB", "XRP", "SOL", "MATIC", "DOT", "ADA"],
-                quote_asset="USDT",
-                min_volume_usdt=1000000
+            if not should_scan:
+                # Sleep in short bursts to allow for interruptions
+                time.sleep(min(30, bot_status.get('signal_interval', 300) // 10))
+                continue
+                
+            print(f"\n🐺 === WOLF SCANNING ACTIVATED ===")
+            print(f"🕒 Time: {format_cairo_time()}")
+            print(f"🎯 Scan Reason: {scan_reason}")
+            print(f"📊 Market Regime: {bot_status.get('market_regime', 'NORMAL')}")
+            print(f"⚡ Hunting Mode: {'ON' if bot_status.get('hunting_mode') else 'OFF'}")
+            
+            # Update market regime every major scan
+            if (current_time - last_major_scan).total_seconds() > 1800:  # Every 30 minutes
+                detect_market_regime()
+                last_major_scan = current_time
+                quick_scan_count = 0
+                
+            # Quick breakout scan if in hunting mode
+            breakout_opportunities = []
+            if bot_status.get('hunting_mode') or bot_status.get('market_regime') in ['VOLATILE', 'EXTREME']:
+                breakout_opportunities = detect_breakout_opportunities()
+                quick_scan_count += 1
+                
+                if breakout_opportunities:
+                    print(f"🚀 BREAKOUT OPPORTUNITIES DETECTED:")
+                    for opp in breakout_opportunities[:2]:
+                        print(f"   💎 {opp['symbol']}: Score {opp['score']}, Signals: {', '.join(opp['signals'])}")
+            
+            # Full market scan (intelligent frequency)
+            should_full_scan = (
+                not breakout_opportunities or  # No breakouts found
+                quick_scan_count >= 5 or      # Max quick scans reached
+                (current_time - last_major_scan).total_seconds() > 3600  # Force every hour
             )
             
+            if should_full_scan:
+                print("🔍 Performing FULL MARKET SCAN")
+                opportunities = scan_trading_pairs(
+                    base_assets=["BTC", "ETH", "BNB", "XRP", "SOL", "MATIC", "DOT", "ADA", "AVAX", "LINK"],
+                    quote_asset="USDT",
+                    min_volume_usdt=500000  # Lower threshold for more opportunities
+                )
+                quick_scan_count = 0
+            else:
+                print("⚡ Using BREAKOUT SCAN results")
+                opportunities = breakout_opportunities
+            
+            # Process opportunities
             if not opportunities:
-                print("No significant trading opportunities found")
-                # Generate signal for default pair even if no opportunities found
+                print("😴 No significant opportunities found - Wolf resting")
+                
+                # Fallback to default pair
                 current_symbol = "BTCUSDT"
-                df = fetch_data(symbol=current_symbol)
+                df = fetch_data(symbol=current_symbol, interval="5m", limit=100)
                 if df is not None:
                     signal = signal_generator(df, current_symbol)
                     current_price = float(df['close'].iloc[-1])
-                    # Update bot status for default pair
+                    
                     bot_status.update({
                         'current_symbol': current_symbol,
                         'last_signal': signal,
@@ -1889,107 +2213,131 @@ def trading_loop():
                             'trend': df['macd_trend'].iloc[-1]
                         }
                     })
-                    print(f"Default pair signal: {signal} for {current_symbol}")
+                    print(f"📊 Default analysis: {signal} for {current_symbol}")
+            else:
+                print(f"🎯 Found {len(opportunities)} hunting targets")
                 
-                # Set next signal time before sleeping
-                bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=scan_interval)
-                print(f"Next signal expected at: {format_cairo_time(bot_status['next_signal_time'])}")
+                # Process top opportunities with intelligent prioritization
+                max_targets = 2 if bot_status.get('hunting_mode') else 1
                 
-                time.sleep(scan_interval)  # Use scan interval instead of 1 hour
-                continue
-            
-            # Process each opportunity in order of potential (highest scores first)
-            for opportunity in opportunities[:3]:  # Look at top 3 opportunities
-                current_symbol = opportunity['symbol']
-                current_score = opportunity['score']
-                df = opportunity['data']  # Get the pre-fetched data
-                
-                print(f"\n=== Analyzing {current_symbol} ===")
-                print(f"Score: {current_score:.1f}")
-                print(f"RSI: {opportunity['rsi']:.1f}")
-                print(f"MACD Trend: {opportunity['macd_trend']}")
-                print("Signals:", ", ".join(opportunity['signals']))
-                
-                # Generate detailed signal using the full data
-                signal = signal_generator(df, current_symbol)
-                current_price = opportunity['price']
-                
-                print(f"Generated Signal: {signal}")
-                
-                # Initialize or update pair tracking
-                if current_symbol not in bot_status['monitored_pairs']:
-                    bot_status['monitored_pairs'][current_symbol] = {
-                        'last_signal': 'HOLD',
-                        'last_price': 0,
-                        'rsi': 50,
-                        'macd': {'macd': 0, 'signal': 0, 'trend': 'NEUTRAL'},
-                        'sentiment': 'neutral',
-                        'total_trades': 0,
-                        'successful_trades': 0,
-                        'last_trade_time': None
-                    }
-                
-                # Update current data for this pair
-                bot_status['monitored_pairs'][current_symbol].update({
-                    'last_signal': signal,
-                    'last_price': current_price,
-                    'rsi': opportunity['rsi'],
-                    'macd': {'trend': opportunity['macd_trend']},
-                    'last_update': format_cairo_time(),
-                    'opportunity_score': current_score
-                })
-                
-                # Update main bot status with best opportunity
-                if current_symbol == opportunities[0]['symbol']:  # Best opportunity
-                    bot_status.update({
-                        'current_symbol': current_symbol,
+                for i, opportunity in enumerate(opportunities[:max_targets]):
+                    current_symbol = opportunity['symbol']
+                    current_score = opportunity.get('score', 0)
+                    
+                    print(f"\n🎯 === TARGET {i+1}: {current_symbol} ===")
+                    print(f"💪 Score: {current_score:.1f}")
+                    
+                    # Get fresh data for analysis
+                    interval = "1m" if bot_status.get('hunting_mode') else "5m"
+                    df = fetch_data(symbol=current_symbol, interval=interval, limit=100)
+                    
+                    if df is None:
+                        continue
+                        
+                    # Enhanced signal generation with market regime consideration
+                    signal = signal_generator(df, current_symbol)
+                    current_price = float(df['close'].iloc[-1])
+                    
+                    print(f"🚦 Signal: {signal}")
+                    print(f"💰 Price: ${current_price:.4f}")
+                    
+                    if 'rsi' in opportunity:
+                        print(f"📈 RSI: {opportunity['rsi']:.1f}")
+                    if 'signals' in opportunity:
+                        print(f"⚡ Triggers: {', '.join(opportunity['signals'])}")
+                    
+                    # Update pair tracking
+                    if current_symbol not in bot_status['monitored_pairs']:
+                        bot_status['monitored_pairs'][current_symbol] = {
+                            'last_signal': 'HOLD',
+                            'last_price': 0,
+                            'rsi': 50,
+                            'macd': {'macd': 0, 'signal': 0, 'trend': 'NEUTRAL'},
+                            'sentiment': 'neutral',
+                            'total_trades': 0,
+                            'successful_trades': 0,
+                            'last_trade_time': None
+                        }
+                    
+                    bot_status['monitored_pairs'][current_symbol].update({
                         'last_signal': signal,
                         'last_price': current_price,
+                        'rsi': float(df['rsi'].iloc[-1]),
+                        'macd': {'trend': df['macd_trend'].iloc[-1]},
                         'last_update': format_cairo_time(),
-                        'rsi': opportunity['rsi'],
-                        'macd': {'trend': opportunity['macd_trend']},
                         'opportunity_score': current_score
                     })
-                
-                # Execute trade if conditions are met
-                if signal in ["BUY", "SELL"] and config.AUTO_TRADING:
-                    # Additional safety checks before trading
-                    if (bot_status.get('consecutive_losses', 0) < config.MAX_CONSECUTIVE_LOSSES and
-                        bot_status.get('daily_loss', 0) < config.MAX_DAILY_LOSS):
+                    
+                    # Update main status with best target
+                    if i == 0:
+                        bot_status.update({
+                            'current_symbol': current_symbol,
+                            'last_signal': signal,
+                            'last_price': current_price,
+                            'last_update': format_cairo_time(),
+                            'rsi': float(df['rsi'].iloc[-1]),
+                            'macd': {'trend': df['macd_trend'].iloc[-1]},
+                            'opportunity_score': current_score
+                        })
+                    
+                    # Execute trade with enhanced conditions
+                    if signal in ["BUY", "SELL"]:
+                        # Risk management checks
+                        can_trade = (
+                            bot_status.get('consecutive_losses', 0) < config.MAX_CONSECUTIVE_LOSSES and
+                            bot_status.get('daily_loss', 0) < config.MAX_DAILY_LOSS
+                        )
                         
-                        print(f"Executing {signal} for {current_symbol}")
-                        result = execute_trade(signal, current_symbol)
-                        print(f"Trade result: {result}")
+                        # Additional hunting mode conditions
+                        if bot_status.get('hunting_mode'):
+                            can_trade = can_trade and current_score >= 50  # Higher threshold in hunting mode
                         
-                        # Update pair tracking
-                        bot_status['monitored_pairs'][current_symbol]['total_trades'] += 1
-                        if "executed" in result.lower():
-                            bot_status['monitored_pairs'][current_symbol]['successful_trades'] += 1
-                        
-                        # Only trade one opportunity per cycle to avoid overtrading
-                        break
-                    else:
-                        print(f"Trading halted due to risk limits: "
-                              f"Losses: {bot_status.get('consecutive_losses', 0)}, "
-                              f"Daily Loss: {bot_status.get('daily_loss', 0)}")
-                
+                        if can_trade:
+                            print(f"🚀 EXECUTING {signal} for {current_symbol}")
+                            result = execute_trade(signal, current_symbol)
+                            print(f"📊 Result: {result}")
+                            
+                            # Update tracking
+                            bot_status['monitored_pairs'][current_symbol]['total_trades'] += 1
+                            if "executed" in str(result).lower():
+                                bot_status['monitored_pairs'][current_symbol]['successful_trades'] += 1
+                            
+                            # In hunting mode, only take the best trade
+                            if bot_status.get('hunting_mode'):
+                                break
+                        else:
+                            print(f"🛑 Trade blocked by risk management")
+                            print(f"   Consecutive losses: {bot_status.get('consecutive_losses', 0)}")
+                            print(f"   Daily loss: ${bot_status.get('daily_loss', 0):.2f}")
+            
             consecutive_errors = 0  # Reset error counter on successful cycle
             
-            # Set next signal time before sleeping
-            bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=scan_interval)
-            print(f"Next signal expected at: {format_cairo_time(bot_status['next_signal_time'])}")
+            # Calculate next scan time with intelligent timing
+            next_interval, next_mode = calculate_smart_interval()
+            bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=next_interval)
+            bot_status['signal_interval'] = next_interval
             
-            time.sleep(scan_interval)  # Use scan interval instead of 1 hour
+            print(f"\n🎯 Next scan: {next_mode} mode in {next_interval}s ({next_interval/60:.1f}min)")
+            print(f"📅 Expected at: {format_cairo_time(bot_status['next_signal_time'])}")
+            
+            # Smart sleep with early wake capabilities
+            sleep_chunks = max(1, next_interval // 30)  # Wake up periodically
+            chunk_size = next_interval / sleep_chunks
+            
+            for _ in range(int(sleep_chunks)):
+                if not bot_status['running']:
+                    break
+                time.sleep(chunk_size)
         
         except KeyboardInterrupt:
-            print("\n=== Keyboard Interrupt ===")
+            print("\n🛑 === KEYBOARD INTERRUPT ===")
             bot_status['running'] = False
             break
             
         except Exception as e:
             consecutive_errors += 1
-            error_msg = f"Trading loop error (attempt {consecutive_errors}/{max_consecutive_errors}): {e}"
-            print(error_msg)
+            error_msg = f"Trading wolf error (attempt {consecutive_errors}/{max_consecutive_errors}): {e}"
+            print(f"⚠️ {error_msg}")
             
             # Log error to CSV
             log_error_to_csv(str(e), "TRADING_LOOP_ERROR", "trading_loop", "ERROR")
@@ -2000,17 +2348,17 @@ def trading_loop():
             bot_status['last_update'] = format_cairo_time()
             
             if consecutive_errors >= max_consecutive_errors:
-                print(f"Maximum consecutive errors reached ({max_consecutive_errors}). Stopping bot.")
+                print(f"💀 Maximum errors reached ({max_consecutive_errors}). Wolf hibernating.")
                 bot_status['running'] = False
                 bot_status['status'] = 'stopped_due_to_errors'
                 break
             
-            # Exponential backoff for errors
-            sleep_time = min(error_sleep_time * (2 ** (consecutive_errors - 1)), 3600)  # Max 1 hour
-            print(f"Sleeping for {sleep_time} seconds before retry...")
+            # Smart error recovery with exponential backoff
+            sleep_time = min(error_sleep_time * (2 ** (consecutive_errors - 1)), 300)  # Max 5 minutes
+            print(f"😴 Wolf resting for {sleep_time} seconds before retry...")
             time.sleep(sleep_time)
     
-    print("\n=== Trading Loop Stopped ===")
+    print("\n🐺 === AI TRADING WOLF DEACTIVATED ===")
     bot_status['running'] = False
     bot_status['status'] = 'stopped'
 
@@ -2696,6 +3044,43 @@ def home():
                     <div style="font-size: 1.1rem;">Auto-Start</div>
                     <div style="font-size: 1.3rem; margin-top: 5px;">
                         {{ 'Enabled' if status.auto_start else 'Disabled' }}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- AI Wolf Intelligence Status -->
+            <div style="margin-top: 20px;">
+                <h3 style="text-align: center; color: #333; margin-bottom: 15px; font-size: 1.2rem;">
+                    🐺 AI Trading Wolf Intelligence
+                </h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px;">
+                    <div class="status-card" style="background: {{ '#d4edda' if status.get('market_regime') == 'EXTREME' else '#d1ecf1' if status.get('market_regime') == 'VOLATILE' else '#fff3cd' if status.get('market_regime') == 'QUIET' else '#e2e3e5' }}; 
+                                                   color: {{ '#155724' if status.get('market_regime') == 'EXTREME' else '#0c5460' if status.get('market_regime') == 'VOLATILE' else '#856404' if status.get('market_regime') == 'QUIET' else '#383d41' }}; 
+                                                   border: 2px solid {{ '#c3e6cb' if status.get('market_regime') == 'EXTREME' else '#bee5eb' if status.get('market_regime') == 'VOLATILE' else '#ffeaa7' if status.get('market_regime') == 'QUIET' else '#d6d8db' }};">
+                        <div style="font-size: 0.9rem;">Market Regime</div>
+                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
+                            {{ status.get('market_regime', 'NORMAL') }}
+                        </div>
+                    </div>
+                    <div class="status-card" style="background: {{ '#f8d7da' if status.get('hunting_mode') else '#e2e3e5' }}; 
+                                                   color: {{ '#721c24' if status.get('hunting_mode') else '#383d41' }}; 
+                                                   border: 2px solid {{ '#f5c6cb' if status.get('hunting_mode') else '#d6d8db' }};">
+                        <div style="font-size: 0.9rem;">Hunting Mode</div>
+                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
+                            {{ 'ACTIVE 🎯' if status.get('hunting_mode') else 'PASSIVE' }}
+                        </div>
+                    </div>
+                    <div class="status-card" style="background: #e2e3e5; color: #383d41; border: 2px solid #d6d8db;">
+                        <div style="font-size: 0.9rem;">Scan Interval</div>
+                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
+                            {{ (status.get('signal_interval', 900) // 60) }}m
+                        </div>
+                    </div>
+                    <div class="status-card" style="background: #e2e3e5; color: #383d41; border: 2px solid #d6d8db;">
+                        <div style="font-size: 0.9rem;">Volatility</div>
+                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
+                            {{ "{:.2f}".format(status.get('volatility_metrics', {}).get('hourly_vol', 0)) if status.get('volatility_metrics') else 'N/A' }}
+                        </div>
                     </div>
                 </div>
             </div>
