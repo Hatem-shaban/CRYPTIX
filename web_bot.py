@@ -2378,24 +2378,6 @@ def home():
                         <span class="stat-value">{{ status.total_trades }}</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">RSI:</span>
-                        <span class="stat-value rsi-{{ 'oversold' if status.rsi < 30 else 'overbought' if status.rsi > 70 else 'neutral' }}">
-                            {{ "{:.1f}".format(status.rsi) }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">MACD Trend:</span>
-                        <span class="stat-value signal-{{ status.macd.trend.lower() }}">
-                            {{ status.macd.trend }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Sentiment:</span>
-                        <span class="stat-value sentiment-{{ status.sentiment }}">
-                            {{ status.sentiment.upper() }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
                         <span class="stat-label">Uptime:</span>
                         <span class="stat-value">
                             {{ "{:.1f}".format(status.uptime.total_seconds() / 3600) if status.uptime else '0' }}h
