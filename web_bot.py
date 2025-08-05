@@ -2109,6 +2109,22 @@ def auto_start_bot():
         log_error_to_csv(error_msg, "AUTO_START_ERROR", "auto_start_bot", "ERROR")
         return False
 
+def start_trading_bot():
+    """Start the trading bot in a separate thread"""
+    try:
+        if not bot_status['running']:
+            # Start trading loop in background thread
+            trading_thread = threading.Thread(target=trading_loop, daemon=True)
+            trading_thread.start()
+            bot_status['running'] = True
+            bot_status['status'] = 'running'
+            print("✅ Trading bot started successfully")
+        else:
+            print("⚠️ Trading bot is already running")
+    except Exception as e:
+        print(f"❌ Failed to start trading bot: {e}")
+        log_error_to_csv(str(e), "START_ERROR", "start_trading_bot", "ERROR")
+
 def start_auto_restart_monitor():
     """Monitor bot status and auto-restart if needed"""
     def monitor():
@@ -3700,264 +3716,6 @@ def view_error_logs():
     except Exception as e:
         return f"Error loading error logs: {e}"
 
-    except Exception as e:
-        return f"<h1>Error loading performance logs: {str(e)}</h1>"
-
-@app.route('/logs/errors')
-def view_error_logs():
-    """Display error logs"""
-    try:
-        csv_files = setup_csv_logging()
-        error_history = []
-        
-        if csv_files['errors'].exists():
-            df = pd.read_csv(csv_files['errors'])
-            for _, row in df.iterrows():
-                error_history.append({
-                    'timestamp': row['timestamp'],
-                    'error_type': row.get('error_type', 'Unknown'),
-                    'function': row.get('function', 'Unknown'),
-                    'message': row.get('message', 'No message'),
-                    'details': row.get('details', 'No details'),
-                    'severity': row.get('severity', 'Medium')
-                })
-        
-        html_template = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Error Logs - Binance Trading Bot</title>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="refresh" content="30">
-            <style>
-                body {{
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    margin: 0;
-                    padding: 20px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    min-height: 100vh;
-                }}
-                .container {{
-                    max-width: 1400px;
-                    margin: 0 auto;
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 15px;
-                    padding: 30px;
-                    backdrop-filter: blur(10px);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                }}
-                h1 {{
-                    text-align: center;
-                    margin-bottom: 30px;
-                    font-size: 2.5em;
-                    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-                }}
-                .nav-buttons {{
-                    display: flex;
-                    justify-content: center;
-                    gap: 15px;
-                    margin-bottom: 30px;
-                    flex-wrap: wrap;
-                }}
-                .nav-btn {{
-                    padding: 12px 25px;
-                    background: rgba(255, 255, 255, 0.2);
-                    border: none;
-                    border-radius: 25px;
-                    color: white;
-                    text-decoration: none;
-                    font-weight: bold;
-                    transition: all 0.3s ease;
-                    backdrop-filter: blur(5px);
-                }}
-                .nav-btn:hover {{
-                    background: rgba(255, 255, 255, 0.3);
-                    transform: translateY(-2px);
-                }}
-                .stats-summary {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 20px;
-                    margin-bottom: 30px;
-                }}
-                .stat-card {{
-                    background: rgba(255, 255, 255, 0.15);
-                    padding: 20px;
-                    border-radius: 10px;
-                    text-align: center;
-                    backdrop-filter: blur(5px);
-                }}
-                .stat-value {{
-                    font-size: 1.8em;
-                    font-weight: bold;
-                    margin-bottom: 5px;
-                }}
-                .stat-label {{
-                    opacity: 0.8;
-                    font-size: 0.9em;
-                }}
-                .table-container {{
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 10px;
-                    overflow: hidden;
-                    overflow-x: auto;
-                }}
-                table {{
-                    width: 100%;
-                    border-collapse: collapse;
-                    min-width: 900px;
-                }}
-                th, td {{
-                    padding: 15px;
-                    text-align: left;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                }}
-                th {{
-                    background: rgba(255, 255, 255, 0.2);
-                    font-weight: bold;
-                    position: sticky;
-                    top: 0;
-                    z-index: 10;
-                }}
-                tr:hover {{
-                    background: rgba(255, 255, 255, 0.1);
-                }}
-                .severity-high {{
-                    background: rgba(244, 67, 54, 0.3);
-                    border-left: 4px solid #f44336;
-                }}
-                .severity-medium {{
-                    background: rgba(255, 152, 0, 0.3);
-                    border-left: 4px solid #ff9800;
-                }}
-                .severity-low {{
-                    background: rgba(76, 175, 80, 0.3);
-                    border-left: 4px solid #4caf50;
-                }}
-                .error-message {{
-                    max-width: 300px;
-                    word-wrap: break-word;
-                    font-family: monospace;
-                    font-size: 0.9em;
-                }}
-                .error-details {{
-                    max-width: 250px;
-                    word-wrap: break-word;
-                    font-size: 0.8em;
-                    opacity: 0.8;
-                }}
-                .empty-state {{
-                    text-align: center;
-                    padding: 60px 20px;
-                    opacity: 0.7;
-                }}
-                .empty-state h3 {{
-                    margin-bottom: 10px;
-                }}
-                @media (max-width: 768px) {{
-                    .container {{
-                        padding: 15px;
-                        margin: 10px;
-                    }}
-                    h1 {{
-                        font-size: 2em;
-                    }}
-                    .nav-buttons {{
-                        justify-content: center;
-                    }}
-                    .nav-btn {{
-                        padding: 10px 20px;
-                        font-size: 0.9em;
-                    }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>⚠️ Error Logs</h1>
-                
-                <div class="nav-buttons">
-                    <a href="/" class="nav-btn">🏠 Dashboard</a>
-                    <a href="/logs" class="nav-btn">📋 All Logs</a>
-                    <a href="/logs/trades" class="nav-btn">💰 Trades</a>
-                    <a href="/logs/signals" class="nav-btn">📡 Signals</a>
-                    <a href="/logs/performance" class="nav-btn">📊 Performance</a>
-                    <a href="/logs/errors" class="nav-btn" style="background: rgba(255, 255, 255, 0.3);">⚠️ Errors</a>
-                </div>
-                
-                <div class="stats-summary">
-                    <div class="stat-card">
-                        <div class="stat-value">{len(error_history)}</div>
-                        <div class="stat-label">Total Errors</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{format_cairo_time()}</div>
-                        <div class="stat-label">Last Updated (Cairo)</div>
-                    </div>
-                </div>
-                
-                <div class="table-container">
-        """
-        
-        if error_history:
-            html_template += """
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th>Severity</th>
-                                <th>Type</th>
-                                <th>Function</th>
-                                <th>Message</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            """
-            
-            for record in error_history:
-                severity = record['severity'].lower()
-                severity_class = f"severity-{severity}"
-                
-                html_template += f"""
-                            <tr class="{severity_class}">
-                                <td>{record['timestamp']}</td>
-                                <td style="font-weight: bold; text-transform: uppercase;">{record['severity']}</td>
-                                <td>{record['error_type']}</td>
-                                <td style="font-family: monospace;">{record['function']}</td>
-                                <td class="error-message">{record['message']}</td>
-                                <td class="error-details">{record['details']}</td>
-                            </tr>
-                """
-            
-            html_template += """
-                        </tbody>
-                    </table>
-            """
-        else:
-            html_template += """
-                    <div class="empty-state">
-                        <h3>✅ No Errors Logged</h3>
-                        <p>Great! The bot is running smoothly without any recorded errors.</p>
-                        <p>Error logs will appear here if any issues occur during trading operations.</p>
-                    </div>
-            """
-        
-        html_template += """
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-        return html_template
-        
-    except Exception as e:
-        return f"<h1>Error loading error logs: {str(e)}</h1>"
-
 @app.route('/ping')
 def ping():
     """Simple ping endpoint for uptime monitoring"""
@@ -4016,23 +3774,15 @@ if __name__ == '__main__':
         
         # Auto-start the bot if enabled
         if bot_status.get('auto_start', True):
-            print("🤖 Auto-starting trading bot...")
-            time.sleep(2)  # Give time for system to initialize
-            if auto_start_bot():
-                print("✅ Trading bot started successfully")
-            else:
-                print("⚠️  Auto-start failed, but web interface is available for manual start")
+            print("Auto-starting trading bot...")
+            start_trading_bot()
+        
+        # Configure Flask for production
+        if config.FLASK_ENV == 'production':
+            app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=False)
         else:
-            print("ℹ️  Auto-start is disabled - use web interface to start bot")
-            
+            app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=True)
     except Exception as e:
-        error_msg = f"Startup initialization error: {str(e)}"
-        print(f"❌ {error_msg}")
-        log_error_to_csv(error_msg, "STARTUP_ERROR", "__main__", "ERROR")
-        print("⚠️  Some features may not work properly")
-    
-    print("=" * 50)
-    print("🌐 Starting web interface...")
-    
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+        print(f"Failed to start application: {e}")
+        log_error_to_csv(str(e), "STARTUP_ERROR", "main", "CRITICAL")
+        
