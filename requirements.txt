@@ -1,0 +1,9 @@
+flask
+python-binance
+pandas
+python-dotenv
+textblob
+snscrape
+psutil
+pytz
+requests
