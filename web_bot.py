@@ -14,7 +14,7 @@ import csv
 from pathlib import Path
 import io
 import zipfile
-from keep_alive import keep_alive
+# from keep_alive import keep_alive  # Disabled to avoid Flask conflicts
 import sys
 import json
 from datetime import datetime, timedelta
@@ -154,7 +154,7 @@ def start_watchdog():
         
         threading.Thread(target=watchdog_thread, daemon=True).start()
 
-keep_alive()
+# keep_alive()  # Disabled to avoid Flask conflicts
 # Load environment variables
 load_dotenv()
 
@@ -693,6 +693,18 @@ def calculate_rsi(prices, period=None):
     except Exception as e:
         print(f"RSI calculation error: {e}")
         return 50
+
+def calculate_sma(df, period=20):
+    """Calculate Simple Moving Average efficiently"""
+    try:
+        if df is None or len(df) < period:
+            return pd.Series([])
+        
+        # Use pandas rolling for efficiency
+        return df['close'].rolling(window=period).mean()
+    except Exception as e:
+        print(f"SMA calculation error: {e}")
+        return pd.Series([])
 
 def calculate_macd(prices, fast=None, slow=None, signal=None):
     """Calculate MACD using configuration parameters"""
@@ -1243,16 +1255,34 @@ def signal_generator(df, symbol="BTCUSDT"):
         log_signal_to_csv(signal, 0, {"symbol": symbol}, "Insufficient data")
         return signal
     
+    # Enhanced risk management checks
+    daily_pnl = bot_status['trading_summary'].get('total_revenue', 0)
+    consecutive_losses = bot_status.get('consecutive_losses', 0)
+    
+    # Stop trading if daily loss limit exceeded
+    if daily_pnl < -config.MAX_DAILY_LOSS:
+        log_signal_to_csv("HOLD", 0, {"symbol": symbol}, f"Daily loss limit exceeded: ${daily_pnl}")
+        return "HOLD"
+    
+    # Reduce activity after consecutive losses
+    if consecutive_losses >= config.MAX_CONSECUTIVE_LOSSES:
+        log_signal_to_csv("HOLD", 0, {"symbol": symbol}, f"Too many consecutive losses: {consecutive_losses}")
+        return "HOLD"
+    
     sentiment = analyze_market_sentiment()
     
-    # Get the latest technical indicators
-    rsi = df['rsi'] if isinstance(df['rsi'], (int, float)) else df['rsi'].iloc[-1] if hasattr(df['rsi'], 'iloc') else df['rsi']
-    macd = df['macd'] if isinstance(df['macd'], (int, float)) else df['macd'].iloc[-1] if hasattr(df['macd'], 'iloc') else df['macd']
-    macd_trend = df['macd_trend'].iloc[-1] if hasattr(df['macd_trend'], 'iloc') else df['macd_trend']
-    sma5 = df['sma5'].iloc[-1]
-    sma20 = df['sma20'].iloc[-1]
-    current_price = df['close'].iloc[-1] if hasattr(df['close'], 'iloc') else df['close']
-    volatility = df['volatility'].iloc[-1] if 'volatility' in df else df['close'].pct_change().std() * np.sqrt(252)
+    # Get the latest technical indicators with error handling
+    try:
+        rsi = df['rsi'] if isinstance(df['rsi'], (int, float)) else df['rsi'].iloc[-1] if hasattr(df['rsi'], 'iloc') else df['rsi']
+        macd = df['macd'] if isinstance(df['macd'], (int, float)) else df['macd'].iloc[-1] if hasattr(df['macd'], 'iloc') else df['macd']
+        macd_trend = df['macd_trend'].iloc[-1] if hasattr(df['macd_trend'], 'iloc') else df['macd_trend']
+        sma5 = df['sma5'].iloc[-1]
+        sma20 = df['sma20'].iloc[-1]
+        current_price = df['close'].iloc[-1] if hasattr(df['close'], 'iloc') else df['close']
+        volatility = df['volatility'].iloc[-1] if 'volatility' in df else df['close'].pct_change().std() * np.sqrt(252)
+    except Exception as e:
+        log_error_to_csv(f"Error extracting indicators: {str(e)}", "INDICATOR_ERROR", "signal_generator", "ERROR")
+        return "HOLD"
     
     # Handle NaN values
     if pd.isna(rsi) or pd.isna(macd) or pd.isna(sma5) or pd.isna(sma20):
@@ -1271,7 +1301,7 @@ def signal_generator(df, symbol="BTCUSDT"):
         'volatility': volatility
     }
     
-    # Use selected strategy
+    # Use selected strategy with enhanced error handling
     try:
         strategy = bot_status.get('trading_strategy', 'STRICT')
         print(f"Using strategy: {strategy}")  # Debug log
@@ -1308,7 +1338,9 @@ def signal_generator(df, symbol="BTCUSDT"):
         error_msg = f"Error in strategy execution: {str(e)}"
         print(error_msg)  # Debug log
         log_error_to_csv(error_msg, "STRATEGY_ERROR", "signal_generator", "ERROR")
-        signal, reason = "HOLD", f"Strategy error: {str(e)}" "HOLD", f"Strategy error: {str(e)}"
+        signal, reason = "HOLD", f"Strategy error: {str(e)}"
+    
+    return signal
     
     # Prepare indicators for logging
     indicators = {
@@ -1441,6 +1473,31 @@ def signal_generator(df, symbol="BTCUSDT"):
                  f"Vol={volume_trend:.2f}, Drawdown={current_drawdown*100:.1f}%")
         log_signal_to_csv("HOLD", current_price, indicators, reason)
         return "HOLD"
+
+def update_trade_tracking(trade_result, profit_loss=0):
+    """Track consecutive wins/losses for smart risk management"""
+    try:
+        if trade_result == 'success':
+            if profit_loss > 0:
+                bot_status['consecutive_losses'] = 0  # Reset on profitable trade
+                bot_status['consecutive_wins'] = bot_status.get('consecutive_wins', 0) + 1
+            else:
+                bot_status['consecutive_losses'] = bot_status.get('consecutive_losses', 0) + 1
+                bot_status['consecutive_wins'] = 0
+        else:
+            bot_status['consecutive_losses'] = bot_status.get('consecutive_losses', 0) + 1
+            bot_status['consecutive_wins'] = 0
+            
+        # Log if consecutive losses are getting high
+        if bot_status['consecutive_losses'] >= 3:
+            log_error_to_csv(
+                f"Consecutive losses: {bot_status['consecutive_losses']}", 
+                "RISK_WARNING", 
+                "update_trade_tracking", 
+                "WARNING"
+            )
+    except Exception as e:
+        log_error_to_csv(str(e), "TRACKING_ERROR", "update_trade_tracking", "ERROR")
 
 def execute_trade(signal, symbol="BTCUSDT", qty=None):
     print("\n=== Trade Execution Debug Log ===")
@@ -1630,6 +1687,10 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
                 bot_status['trading_summary']['total_buy_volume'] + bot_status['trading_summary']['total_sell_volume']
             ) / total_trades if total_trades > 0 else 0
         
+        # Update smart trade tracking
+        profit_loss = revenue if signal == "SELL" and 'revenue' in locals() else 0
+        update_trade_tracking('success', profit_loss)
+        
         return f"{signal} order executed: {order['orderId']} at ${trade_info['price']:.2f}"
         
     except BinanceAPIException as e:
@@ -1637,6 +1698,9 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
         bot_status['trading_summary']['failed_trades'] += 1
         bot_status['trading_summary']['trades_history'].insert(0, trade_info)
         bot_status['errors'].append(str(e))
+        
+        # Update smart trade tracking for failed trades
+        update_trade_tracking('failed', -1)  # Mark as loss
         
         # Log failed trade to CSV
         additional_data = {
@@ -1651,6 +1715,110 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
         log_error_to_csv(str(e), "API_ERROR", "execute_trade", "ERROR")
         
         return f"Order failed: {str(e)}"
+
+def scan_trading_pairs(base_assets, quote_asset="USDT", min_volume_usdt=1000000):
+    """Smart multi-coin scanner for best trading opportunities"""
+    opportunities = []
+    
+    for base in base_assets:
+        try:
+            symbol = f"{base}{quote_asset}"
+            
+            # Get 24h ticker statistics
+            ticker = client.get_ticker(symbol=symbol)
+            volume_usdt = float(ticker['quoteVolume'])
+            price_change_pct = float(ticker['priceChangePercent'])
+            
+            # Skip if volume too low
+            if volume_usdt < min_volume_usdt:
+                continue
+            
+            # Fetch market data
+            df = fetch_data(symbol=symbol, limit=50)  # Smaller dataset for scanning
+            if df is None or len(df) < 20:
+                continue
+            
+            # Calculate technical indicators
+            current_price = float(df['close'].iloc[-1])
+            rsi = calculate_rsi(df, period=14)
+            macd_result = calculate_macd(df)
+            sma_fast = calculate_sma(df, period=10)
+            sma_slow = calculate_sma(df, period=20)
+            
+            if len(rsi) == 0 or macd_result is None:
+                continue
+            
+            current_rsi = rsi.iloc[-1]
+            macd_line = macd_result['macd'].iloc[-1] if len(macd_result['macd']) > 0 else 0
+            signal_line = macd_result['signal'].iloc[-1] if len(macd_result['signal']) > 0 else 0
+            
+            # Score the opportunity (0-100)
+            opportunity_score = 0
+            signals = []
+            
+            # RSI scoring
+            if current_rsi < 30:  # Oversold
+                opportunity_score += 30
+                signals.append("RSI_OVERSOLD")
+            elif current_rsi > 70:  # Overbought
+                opportunity_score += 20
+                signals.append("RSI_OVERBOUGHT")
+            elif 45 <= current_rsi <= 55:  # Neutral zone
+                opportunity_score += 10
+                signals.append("RSI_NEUTRAL")
+            
+            # MACD scoring
+            if macd_line > signal_line:
+                opportunity_score += 20
+                signals.append("MACD_BULLISH")
+            else:
+                signals.append("MACD_BEARISH")
+            
+            # Price momentum scoring
+            if abs(price_change_pct) > 5:  # High volatility
+                opportunity_score += 15
+                signals.append("HIGH_VOLATILITY")
+            
+            # Volume scoring
+            if volume_usdt > min_volume_usdt * 5:  # Very high volume
+                opportunity_score += 15
+                signals.append("HIGH_VOLUME")
+            
+            # SMA trend scoring
+            if current_price > sma_fast.iloc[-1] > sma_slow.iloc[-1]:
+                opportunity_score += 10
+                signals.append("UPTREND")
+            elif current_price < sma_fast.iloc[-1] < sma_slow.iloc[-1]:
+                opportunity_score += 10
+                signals.append("DOWNTREND")
+            
+            opportunities.append({
+                'symbol': symbol,
+                'score': opportunity_score,
+                'price': current_price,
+                'volume_usdt': volume_usdt,
+                'price_change_pct': price_change_pct,
+                'rsi': current_rsi,
+                'macd_trend': 'BULLISH' if macd_line > signal_line else 'BEARISH',
+                'signals': signals,
+                'data': df  # Include data for immediate analysis if selected
+            })
+            
+        except Exception as e:
+            print(f"Error scanning {base}{quote_asset}: {e}")
+            continue
+    
+    # Sort by opportunity score (highest first)
+    opportunities.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Log top opportunities
+    if opportunities:
+        print(f"\n=== Top Trading Opportunities ===")
+        for i, opp in enumerate(opportunities[:5]):  # Show top 5
+            print(f"{i+1}. {opp['symbol']}: Score {opp['score']}, RSI {opp['rsi']:.1f}, "
+                  f"Change {opp['price_change_pct']:.2f}%, Signals: {', '.join(opp['signals'])}")
+    
+    return opportunities
 
 def trading_loop():
     """Enhanced trading loop with multi-coin scanning and robust error handling"""
@@ -1734,11 +1902,19 @@ def trading_loop():
             for opportunity in opportunities[:3]:  # Look at top 3 opportunities
                 current_symbol = opportunity['symbol']
                 current_score = opportunity['score']
+                df = opportunity['data']  # Get the pre-fetched data
                 
                 print(f"\n=== Analyzing {current_symbol} ===")
                 print(f"Score: {current_score:.1f}")
-                print(f"Signal: {opportunity['signal']}")
-                print("Reasons:", ", ".join(opportunity['reasons']))
+                print(f"RSI: {opportunity['rsi']:.1f}")
+                print(f"MACD Trend: {opportunity['macd_trend']}")
+                print("Signals:", ", ".join(opportunity['signals']))
+                
+                # Generate detailed signal using the full data
+                signal = signal_generator(df, current_symbol)
+                current_price = opportunity['price']
+                
+                print(f"Generated Signal: {signal}")
                 
                 # Initialize or update pair tracking
                 if current_symbol not in bot_status['monitored_pairs']:
@@ -1750,121 +1926,157 @@ def trading_loop():
                         'sentiment': 'neutral',
                         'total_trades': 0,
                         'successful_trades': 0,
-                        'total_profit': 0,
-                        'last_update': None,
-                        'volume_24h': 0
+                        'last_trade_time': None
                     }
                 
-                # Get current market data
-                df = fetch_data(symbol=current_symbol)
-                if df is None:
-                    print(f"Failed to fetch data for {current_symbol}, skipping...")
-                    continue
-                
-                # Generate trading signal with enhanced data
-                signal = signal_generator(df, current_symbol)
-                current_price = float(df['close'].iloc[-1])
-                
-                # Update pair-specific status
-                pair_status = {
+                # Update current data for this pair
+                bot_status['monitored_pairs'][current_symbol].update({
                     'last_signal': signal,
                     'last_price': current_price,
-                    'rsi': float(df['rsi'].iloc[-1]),
-                    'macd': {
-                        'macd': float(df['macd'].iloc[-1]),
-                        'signal': float(df['macd_signal'].iloc[-1]),
-                        'trend': df['macd_trend'].iloc[-1]
-                    },
-                    'sentiment': analyze_market_sentiment(),
-                    'volume_24h': opportunity['volume_24h'],
-                    'volatility': float(df['volatility'].iloc[-1]),
-                    'last_update': format_cairo_time()
-                }
-                
-                bot_status['monitored_pairs'][current_symbol].update(pair_status)
-                
-                # Update global bot status with current pair's info
-                current_time = format_cairo_time()
-                bot_status.update({
-                    'current_symbol': current_symbol,
-                    'last_signal': signal,
-                    'last_price': current_price,
-                    'last_update': current_time,
-                    'rsi': float(df['rsi'].iloc[-1]),
-                    'macd': pair_status['macd'],
-                    'sentiment': pair_status['sentiment'],
-                    'uptime': get_cairo_time() - bot_status.get('start_time', get_cairo_time()),
-                    'consecutive_errors': consecutive_errors,
-                    'total_trades': bot_status['trading_summary'].get('total_trades', 0),
-                    'win_rate': bot_status['trading_summary'].get('win_rate', 0.0),
-                    'last_trade_time': current_time,
-                    'profit_loss': bot_status['trading_summary'].get('total_revenue', 0.0)
+                    'rsi': opportunity['rsi'],
+                    'macd': {'trend': opportunity['macd_trend']},
+                    'last_update': format_cairo_time(),
+                    'opportunity_score': current_score
                 })
                 
-                # Print analysis summary
-                print(f"\nTechnical Analysis for {current_symbol}:")
-                print(f"Price: ${current_price:.2f}")
-                print(f"24h Volume: ${opportunity['volume_24h']:,.0f}")
-                print(f"RSI: {pair_status['rsi']:.1f}")
-                print(f"MACD Trend: {pair_status['macd']['trend']}")
-                print(f"Volatility: {pair_status['volatility']:.2%}")
+                # Update main bot status with best opportunity
+                if current_symbol == opportunities[0]['symbol']:  # Best opportunity
+                    bot_status.update({
+                        'current_symbol': current_symbol,
+                        'last_signal': signal,
+                        'last_price': current_price,
+                        'last_update': format_cairo_time(),
+                        'rsi': opportunity['rsi'],
+                        'macd': {'trend': opportunity['macd_trend']},
+                        'opportunity_score': current_score
+                    })
                 
                 # Execute trade if conditions are met
-                if abs(current_score) >= 50 and signal != "HOLD":
-                    print(f"\nExecuting {signal} signal for {current_symbol}")
-                    trade_result = execute_trade(signal, current_symbol)
-                    print(trade_result)
-                else:
-                    print(f"\nNo trade execution for {current_symbol} - Conditions not met")
-                    print(f"Score: {current_score:.1f} (need ±50), Signal: {signal}")
+                if signal in ["BUY", "SELL"] and config.AUTO_TRADING:
+                    # Additional safety checks before trading
+                    if (bot_status.get('consecutive_losses', 0) < config.MAX_CONSECUTIVE_LOSSES and
+                        bot_status.get('daily_loss', 0) < config.MAX_DAILY_LOSS):
+                        
+                        print(f"Executing {signal} for {current_symbol}")
+                        result = execute_trade(signal, current_symbol)
+                        print(f"Trade result: {result}")
+                        
+                        # Update pair tracking
+                        bot_status['monitored_pairs'][current_symbol]['total_trades'] += 1
+                        if "executed" in result.lower():
+                            bot_status['monitored_pairs'][current_symbol]['successful_trades'] += 1
+                        
+                        # Only trade one opportunity per cycle to avoid overtrading
+                        break
+                    else:
+                        print(f"Trading halted due to risk limits: "
+                              f"Losses: {bot_status.get('consecutive_losses', 0)}, "
+                              f"Daily Loss: {bot_status.get('daily_loss', 0)}")
                 
-                # Reset error counter on successful iteration
-                consecutive_errors = 0
-            
-            # Log daily performance at midnight Cairo time
-            if get_cairo_time().hour == 0:
-                log_daily_performance()
+            consecutive_errors = 0  # Reset error counter on successful cycle
             
             # Set next signal time before sleeping
             bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=scan_interval)
-            
-            # Sleep between scans
-            print(f"\nSleeping for {scan_interval} seconds until next scan...")
             print(f"Next signal expected at: {format_cairo_time(bot_status['next_signal_time'])}")
-            time.sleep(scan_interval)
             
+            time.sleep(scan_interval)  # Use scan interval instead of 1 hour
+        
         except KeyboardInterrupt:
-            print("Bot stopped by user")
+            print("\n=== Keyboard Interrupt ===")
             bot_status['running'] = False
             break
             
         except Exception as e:
             consecutive_errors += 1
-            error_msg = f"Trading loop error: {e}"
+            error_msg = f"Trading loop error (attempt {consecutive_errors}/{max_consecutive_errors}): {e}"
             print(error_msg)
-            log_error_to_csv(error_msg, "TRADING_LOOP_ERROR", "trading_loop", "ERROR")
+            
+            # Log error to CSV
+            log_error_to_csv(str(e), "TRADING_LOOP_ERROR", "trading_loop", "ERROR")
+            
+            # Update bot status
+            bot_status['errors'].append(error_msg)
+            bot_status['last_error'] = error_msg
+            bot_status['last_update'] = format_cairo_time()
             
             if consecutive_errors >= max_consecutive_errors:
-                print("Too many consecutive errors. Stopping bot for safety.")
-                log_error_to_csv(
-                    "Max consecutive errors reached - stopping bot",
-                    "CRITICAL_ERROR",
-                    "trading_loop",
-                    "CRITICAL"
-                )
+                print(f"Maximum consecutive errors reached ({max_consecutive_errors}). Stopping bot.")
                 bot_status['running'] = False
+                bot_status['status'] = 'stopped_due_to_errors'
                 break
             
             # Exponential backoff for errors
-            sleep_time = min(error_sleep_time * (2 ** (consecutive_errors - 1)), 1800)
-            print(f"Waiting {sleep_time} seconds before retry...")
-            
-            # Update next signal time for error case
-            bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=sleep_time)
-            
+            sleep_time = min(error_sleep_time * (2 ** (consecutive_errors - 1)), 3600)  # Max 1 hour
+            print(f"Sleeping for {sleep_time} seconds before retry...")
             time.sleep(sleep_time)
     
-    print("Trading loop stopped")
+    print("\n=== Trading Loop Stopped ===")
+    bot_status['running'] = False
+    bot_status['status'] = 'stopped'
+
+def smart_portfolio_manager():
+    """Advanced portfolio management with dynamic risk allocation"""
+    try:
+        if not client:
+            return {"error": "API not connected"}
+        
+        account = client.get_account()
+        balances = {b['asset']: float(b['free']) for b in account['balances'] if float(b['free']) > 0}
+        
+        # Calculate total portfolio value in USDT
+        total_usdt_value = balances.get('USDT', 0)
+        for asset, amount in balances.items():
+            if asset != 'USDT' and amount > 0:
+                try:
+                    ticker = client.get_ticker(symbol=f"{asset}USDT")
+                    price = float(ticker['price'])
+                    total_usdt_value += amount * price
+                except:
+                    continue
+        
+        # Smart position sizing based on portfolio value and risk
+        max_position_size = total_usdt_value * (config.RISK_PERCENTAGE / 100)
+        
+        # Adjust for volatility and consecutive losses
+        volatility_adjustment = 1.0
+        loss_adjustment = 1.0
+        
+        consecutive_losses = bot_status.get('consecutive_losses', 0)
+        if consecutive_losses > 0:
+            loss_adjustment = max(0.1, 1.0 - (consecutive_losses * 0.2))  # Reduce size by 20% per loss
+        
+        adjusted_position_size = max_position_size * volatility_adjustment * loss_adjustment
+        
+        portfolio_info = {
+            'total_value_usdt': total_usdt_value,
+            'max_position_size': max_position_size,
+            'adjusted_position_size': adjusted_position_size,
+            'risk_percentage': config.RISK_PERCENTAGE,
+            'consecutive_losses': consecutive_losses,
+            'loss_adjustment': loss_adjustment,
+            'balances': balances,
+            'portfolio_allocation': {}
+        }
+        
+        # Calculate portfolio allocation percentages
+        for asset, amount in balances.items():
+            if asset == 'USDT':
+                portfolio_info['portfolio_allocation'][asset] = (amount / total_usdt_value) * 100
+            else:
+                try:
+                    ticker = client.get_ticker(symbol=f"{asset}USDT")
+                    price = float(ticker['price'])
+                    asset_value = amount * price
+                    portfolio_info['portfolio_allocation'][asset] = (asset_value / total_usdt_value) * 100
+                except:
+                    portfolio_info['portfolio_allocation'][asset] = 0
+        
+        return portfolio_info
+        
+    except Exception as e:
+        return {"error": f"Portfolio management error: {e}"}
+
+# Flask Routes and Dashboard Functions
     bot_status['running'] = False
     bot_status['next_signal_time'] = None  # Clear next signal time when stopped
     bot_status['last_stop_reason'] = 'normal'  # Track stop reason for auto-restart logic
@@ -3162,157 +3374,7 @@ def view_signal_logs():
 
 @app.route('/logs/performance')
 def view_performance_logs():
-    """View daily performance CSV"""
-    try:
-        csv_files = setup_csv_logging()
-        
-        if not csv_files['performance'].exists():
-            performance = []
-        else:
-            df = pd.read_csv(csv_files['performance'])
-            performance = df.to_dict('records')
-        
-        return render_template_string("""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Performance</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 8px 12px; border: 1px solid #ddd; text-align: left; }
-        th { background: #f8f9fa; font-weight: bold; position: sticky; top: 0; }
-        tr:nth-child(even) { background: #f9f9f9; }
-        .back-link { display: inline-block; margin-bottom: 20px; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; }
-        .positive { color: #28a745; font-weight: bold; }
-        .negative { color: #dc3545; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <a href="/logs" class="back-link">← Back to Logs</a>
-        <h1>📉 Daily Performance</h1>
-        
-        {% if performance %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Total Trades</th>
-                    <th>Successful</th>
-                    <th>Failed</th>
-                    <th>Win Rate %</th>
-                    <th>Total Revenue</th>
-                    <th>Daily P&L</th>
-                    <th>Total Volume</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for day in performance %}
-                <tr>
-                    <td>{{ day.date }}</td>
-                    <td>{{ day.total_trades }}</td>
-                    <td>{{ day.successful_trades }}</td>
-                    <td>{{ day.failed_trades }}</td>
-                    <td>{{ "%.1f"|format(day.win_rate) }}%</td>
-                    <td class="{{ 'positive' if day.total_revenue > 0 else 'negative' if day.total_revenue < 0 else '' }}">${{ "%.2f"|format(day.total_revenue) }}</td>
-                    <td class="{{ 'positive' if day.daily_pnl > 0 else 'negative' if day.daily_pnl < 0 else '' }}">${{ "%.2f"|format(day.daily_pnl) }}</td>
-                    <td>${{ "%.2f"|format(day.total_volume) }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p>No performance data found.</p>
-        {% endif %}
-    </div>
-</body>
-</html>
-        """, performance=performance)
-        
-    except Exception as e:
-        return f"Error loading performance logs: {e}"
-
-@app.route('/logs/errors')
-def view_error_logs():
-    """View error log CSV"""
-    try:
-        csv_files = setup_csv_logging()
-        
-        if not csv_files['errors'].exists():
-            errors = []
-        else:
-            df = pd.read_csv(csv_files['errors'])
-            # Get last 50 errors
-            errors = df.tail(50).to_dict('records')
-        
-        return render_template_string("""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Error Log</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.8rem; }
-        th, td { padding: 6px 8px; border: 1px solid #ddd; text-align: left; }
-        th { background: #f8f9fa; font-weight: bold; position: sticky; top: 0; }
-        tr:nth-child(even) { background: #f9f9f9; }
-        .back-link { display: inline-block; margin-bottom: 20px; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; }
-        .error { background: #f8d7da; }
-        .warning { background: #fff3cd; }
-        .critical { background: #f5c6cb; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <a href="/logs" class="back-link">← Back to Logs</a>
-        <h1>❌ Error Log (Last 50 Errors)</h1>
-        
-        {% if errors %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Time (Cairo)</th>
-                    <th>Severity</th>
-                    <th>Error Type</th>
-                    <th>Function</th>
-                    <th>Error Message</th>
-                    <th>Bot Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for error in errors %}
-                <tr class="{{ error.severity.lower() }}">
-                    <td>{{ error.cairo_time }}</td>
-                    <td>{{ error.severity }}</td>
-                    <td>{{ error.error_type }}</td>
-                    <td>{{ error.function_name }}</td>
-                    <td style="max-width: 300px; word-wrap: break-word;">{{ error.error_message }}</td>
-                    <td>{{ error.bot_status }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p>No errors found.</p>
-        {% endif %}
-    </div>
-</body>
-</html>
-        """, errors=errors)
-        
-    except Exception as e:
-        return f"Error loading error logs: {e}"
-
-@app.route('/logs/performance')
-def performance_logs():
-    """Display performance logs"""
+    """View daily performance CSV with enhanced UI"""
     try:
         csv_files = setup_csv_logging()
         performance_history = []
@@ -3321,22 +3383,21 @@ def performance_logs():
             df = pd.read_csv(csv_files['performance'])
             for _, row in df.iterrows():
                 performance_history.append({
-                    'timestamp': row['timestamp'],
-                    'period': row.get('period', 'Unknown'),
+                    'date': row.get('date', 'Unknown'),
                     'total_trades': row.get('total_trades', 0),
                     'successful_trades': row.get('successful_trades', 0),
-                    'success_rate': row.get('success_rate', 0),
+                    'failed_trades': row.get('failed_trades', 0),
+                    'win_rate': row.get('win_rate', 0),
                     'total_revenue': row.get('total_revenue', 0),
-                    'avg_profit_per_trade': row.get('avg_profit_per_trade', 0),
-                    'max_drawdown': row.get('max_drawdown', 0),
-                    'sharpe_ratio': row.get('sharpe_ratio', 0)
+                    'daily_pnl': row.get('daily_pnl', 0),
+                    'total_volume': row.get('total_volume', 0)
                 })
         
         html_template = f"""
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Performance History - Binance Trading Bot</title>
+            <title>Performance History - CRYPTIX AI Trading Bot</title>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <meta http-equiv="refresh" content="30">
@@ -3505,42 +3566,38 @@ def performance_logs():
                     <table>
                         <thead>
                             <tr>
-                                <th>Timestamp</th>
-                                <th>Period</th>
+                                <th>Date</th>
                                 <th>Total Trades</th>
                                 <th>Successful</th>
-                                <th>Success Rate</th>
+                                <th>Failed</th>
+                                <th>Win Rate %</th>
                                 <th>Total Revenue</th>
-                                <th>Avg Profit/Trade</th>
-                                <th>Max Drawdown</th>
-                                <th>Sharpe Ratio</th>
+                                <th>Daily P&L</th>
+                                <th>Total Volume</th>
                             </tr>
                         </thead>
                         <tbody>
             """
             
             for record in performance_history:
-                success_rate = float(record['success_rate'])
+                win_rate = float(record['win_rate'])
                 total_revenue = float(record['total_revenue'])
-                avg_profit = float(record['avg_profit_per_trade'])
-                sharpe_ratio = float(record['sharpe_ratio'])
+                daily_pnl = float(record['daily_pnl'])
                 
-                success_class = "positive" if success_rate >= 60 else "negative" if success_rate < 40 else "neutral"
+                win_rate_class = "positive" if win_rate >= 60 else "negative" if win_rate < 40 else "neutral"
                 revenue_class = "positive" if total_revenue > 0 else "negative" if total_revenue < 0 else "neutral"
-                profit_class = "positive" if avg_profit > 0 else "negative" if avg_profit < 0 else "neutral"
-                sharpe_class = "positive" if sharpe_ratio > 1 else "negative" if sharpe_ratio < 0.5 else "neutral"
+                pnl_class = "positive" if daily_pnl > 0 else "negative" if daily_pnl < 0 else "neutral"
                 
                 html_template += f"""
                             <tr>
-                                <td>{record['timestamp']}</td>
-                                <td>{record['period']}</td>
+                                <td>{record['date']}</td>
                                 <td>{record['total_trades']}</td>
                                 <td>{record['successful_trades']}</td>
-                                <td class="{success_class}">{success_rate:.1f}%</td>
+                                <td>{record['failed_trades']}</td>
+                                <td class="{win_rate_class}">{win_rate:.1f}%</td>
                                 <td class="{revenue_class}">${total_revenue:.2f}</td>
-                                <td class="{profit_class}">${avg_profit:.2f}</td>
-                                <td class="negative">{record['max_drawdown']:.2f}%</td>
-                                <td class="{sharpe_class}">{sharpe_ratio:.2f}</td>
+                                <td class="{pnl_class}">${daily_pnl:.2f}</td>
+                                <td>${record['total_volume']:.2f}</td>
                             </tr>
                 """
             
@@ -3570,7 +3627,84 @@ def performance_logs():
         return f"<h1>Error loading performance logs: {str(e)}</h1>"
 
 @app.route('/logs/errors')
-def error_logs():
+def view_error_logs():
+    """View error log CSV"""
+    try:
+        csv_files = setup_csv_logging()
+        
+        if not csv_files['errors'].exists():
+            errors = []
+        else:
+            df = pd.read_csv(csv_files['errors'])
+            # Get last 50 errors
+            errors = df.tail(50).to_dict('records')
+        
+        return render_template_string("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error Log</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.8rem; }
+        th, td { padding: 6px 8px; border: 1px solid #ddd; text-align: left; }
+        th { background: #f8f9fa; font-weight: bold; position: sticky; top: 0; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .back-link { display: inline-block; margin-bottom: 20px; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; }
+        .error { background: #f8d7da; }
+        .warning { background: #fff3cd; }
+        .critical { background: #f5c6cb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/logs" class="back-link">← Back to Logs</a>
+        <h1>❌ Error Log (Last 50 Errors)</h1>
+        
+        {% if errors %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Time (Cairo)</th>
+                    <th>Severity</th>
+                    <th>Error Type</th>
+                    <th>Function</th>
+                    <th>Error Message</th>
+                    <th>Bot Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for error in errors %}
+                <tr class="{{ error.severity.lower() }}">
+                    <td>{{ error.cairo_time }}</td>
+                    <td>{{ error.severity }}</td>
+                    <td>{{ error.error_type }}</td>
+                    <td>{{ error.function_name }}</td>
+                    <td style="max-width: 300px; word-wrap: break-word;">{{ error.error_message }}</td>
+                    <td>{{ error.bot_status }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No errors found.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
+        """, errors=errors)
+        
+    except Exception as e:
+        return f"Error loading error logs: {e}"
+
+    except Exception as e:
+        return f"<h1>Error loading performance logs: {str(e)}</h1>"
+
+@app.route('/logs/errors')
+def view_error_logs():
     """Display error logs"""
     try:
         csv_files = setup_csv_logging()

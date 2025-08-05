@@ -1,7 +1,7 @@
 # Trading Bot Configuration
 
 # Risk Management Settings
-RISK_PERCENTAGE = 60.0  # Percentage of total balance to risk per trade (60% = 0.6)
+RISK_PERCENTAGE = 40.0  # Percentage of total balance to risk per trade (40% = aggressive)
 MIN_TRADE_USDT = 10.0  # Minimum trade size in USDT
 MAX_DRAWDOWN = 15.0  # Maximum drawdown percentage allowed
 
@@ -58,11 +58,23 @@ ADAPTIVE_STRATEGY = {
 }
 
 # Performance Tracking
-MAX_TRADES_HISTORY = 10  # Number of recent trades to keep in memory
+MAX_TRADES_HISTORY = 0,  # Number of recent trades to keep in memory
 PERFORMANCE_METRICS = {
     'win_rate_min': 50.0,     # Minimum win rate percentage
     'profit_factor_min': 1.5,  # Minimum profit factor
     'max_consecutive_losses': 3 # Maximum consecutive losing trades
+}
+
+# Daily Risk Limits (NEW)
+MAX_DAILY_LOSS = 50.0  # Maximum daily loss in USD
+MAX_CONSECUTIVE_LOSSES = 5  # Stop trading after this many losses
+MAX_PORTFOLIO_EXPOSURE = 80.0  # Maximum percentage of portfolio at risk
+
+# API Rate Limiting (NEW)
+API_RATE_LIMITS = {
+    'calls_per_minute': 1200,  # Binance limit
+    'calls_per_second': 10,    # Conservative limit
+    'weight_per_minute': 6000  # Weight-based limiting
 }
 
 # Watchdog Settings
