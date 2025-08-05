@@ -1,3 +1,4 @@
+# CRYPTIX
 # Binance AI Crypto Trading Bot (Web Dashboard)
 
 ## 🔥 Features
@@ -15,7 +16,7 @@
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/Hatem-shaban/CRYPTIX-AI-BOT.git
+git clone https://github.com/Hatem-shaban/CRYPTIX.git
 cd binance-ai-bot
 ```
 
