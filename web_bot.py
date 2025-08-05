@@ -3778,10 +3778,16 @@ if __name__ == '__main__':
             start_trading_bot()
         
         # Configure Flask for production
-        if config.FLASK_ENV == 'production':
-            app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=False)
+        flask_env = os.getenv('FLASK_ENV', 'development')
+        flask_host = os.getenv('FLASK_HOST', '0.0.0.0')
+        flask_port = int(os.getenv('FLASK_PORT', 5000))
+        
+        if flask_env == 'production':
+            print(f"🌐 Starting Flask server in PRODUCTION mode on {flask_host}:{flask_port}")
+            app.run(host=flask_host, port=flask_port, debug=False)
         else:
-            app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=True)
+            print(f"🌐 Starting Flask server in DEVELOPMENT mode on {flask_host}:{flask_port}")
+            app.run(host=flask_host, port=flask_port, debug=True)
     except Exception as e:
         print(f"Failed to start application: {e}")
         log_error_to_csv(str(e), "STARTUP_ERROR", "main", "CRITICAL")
