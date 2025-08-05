@@ -3780,7 +3780,7 @@ if __name__ == '__main__':
         # Configure Flask for production
         flask_env = os.getenv('FLASK_ENV', 'development')
         flask_host = os.getenv('FLASK_HOST', '0.0.0.0')
-        flask_port = int(os.getenv('FLASK_PORT', 10000))
+        flask_port = 10000
         
         if flask_env == 'production':
             print(f"🌐 Starting Flask server in PRODUCTION mode on {flask_host}:{flask_port}")
