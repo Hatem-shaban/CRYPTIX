@@ -439,6 +439,8 @@ def get_csv_trade_history(days=30): #Hatem Need to confirm the need
 # Global bot status
 bot_status = {
     'running': False,
+    'auto_start': True,  # Enable auto-start by default
+    'auto_restart': True,  # Enable auto-restart on failures
     'last_signal': 'UNKNOWN',
     'current_symbol': 'BTCUSDT',  # Track currently analyzed symbol
     'last_price': 0,
@@ -1865,6 +1867,77 @@ def trading_loop():
     print("Trading loop stopped")
     bot_status['running'] = False
     bot_status['next_signal_time'] = None  # Clear next signal time when stopped
+    bot_status['last_stop_reason'] = 'normal'  # Track stop reason for auto-restart logic
+
+def auto_start_bot():
+    """Automatically start the bot if auto-start is enabled and conditions are met"""
+    try:
+        if not bot_status.get('auto_start', True):
+            print("Auto-start is disabled")
+            return False
+            
+        if bot_status.get('running', False):
+            print("Bot is already running")
+            return True
+            
+        print("Auto-starting trading bot...")
+        if initialize_client():
+            # Start trading loop in a separate thread
+            trading_thread = threading.Thread(target=trading_loop, daemon=True)
+            trading_thread.start()
+            print("✅ Bot auto-started successfully")
+            return True
+        else:
+            print("❌ Auto-start failed: Could not initialize API client")
+            return False
+            
+    except Exception as e:
+        error_msg = f"Auto-start failed: {str(e)}"
+        print(error_msg)
+        log_error_to_csv(error_msg, "AUTO_START_ERROR", "auto_start_bot", "ERROR")
+        return False
+
+def start_auto_restart_monitor():
+    """Monitor bot status and auto-restart if needed"""
+    def monitor():
+        while True:
+            try:
+                time.sleep(60)  # Check every minute
+                
+                if not bot_status.get('auto_restart', True):
+                    continue
+                    
+                # Check if bot should be running but isn't
+                # Don't restart if it was manually stopped
+                last_stop_reason = bot_status.get('last_stop_reason', 'unknown')
+                if (bot_status.get('auto_start', True) and 
+                    not bot_status.get('running', False) and 
+                    bot_status.get('api_connected', False) and
+                    last_stop_reason != 'manual'):
+                    
+                    print("🔄 Bot appears to have stopped unexpectedly, attempting auto-restart...")
+                    log_error_to_csv("Bot stopped unexpectedly - attempting auto-restart", 
+                                    "AUTO_RESTART", "start_auto_restart_monitor", "WARNING")
+                    
+                    # Wait a moment before restart
+                    time.sleep(5)
+                    
+                    if auto_start_bot():
+                        print("✅ Bot successfully auto-restarted")
+                        bot_status['last_stop_reason'] = 'restarted'
+                    else:
+                        print("❌ Auto-restart failed")
+                        
+            except Exception as e:
+                error_msg = f"Auto-restart monitor error: {str(e)}"
+                print(error_msg)
+                log_error_to_csv(error_msg, "AUTO_RESTART_ERROR", "start_auto_restart_monitor", "ERROR")
+                time.sleep(30)  # Wait longer on error
+    
+    # Start monitor in background thread
+    monitor_thread = threading.Thread(target=monitor, daemon=True)
+    monitor_thread.start()
+    print("🔍 Auto-restart monitor started")
 
 @app.route('/download_logs')
 def download_logs():
@@ -2002,7 +2075,7 @@ def home():
         
         .status-cards {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -2391,6 +2464,12 @@ def home():
                         {{ 'Connected (Testnet)' if status.api_connected else 'Disconnected' }}
                     </div>
                 </div>
+                <div class="status-card {{ 'status-running' if status.auto_start else 'status-stopped' }}">
+                    <div style="font-size: 1.1rem;">Auto-Start</div>
+                    <div style="font-size: 1.3rem; margin-top: 5px;">
+                        {{ 'Enabled' if status.auto_start else 'Disabled' }}
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -2570,6 +2649,13 @@ def home():
             <a href="/start" class="btn btn-start">Start Bot</a>
             <a href="/stop" class="btn btn-stop">Stop Bot</a>
             <a href="/logs" class="btn" style="background: #17a2b8; color: white;">📋 View Logs</a>
+            <div style="margin-top: 15px;">
+                {% if status.auto_start %}
+                    <a href="/autostart/disable" class="btn" style="background: #ffc107; color: #212529;">🔄 Disable Auto-Start</a>
+                {% else %}
+                    <a href="/autostart/enable" class="btn" style="background: #28a745; color: white;">🔄 Enable Auto-Start</a>
+                {% endif %}
+            </div>
         </div>
         
         <div class="footer">
@@ -2586,19 +2672,23 @@ def home():
 
 @app.route('/start')
 def start():
+    """Manual start route - uses auto-start function"""
     if not bot_status['running']:
-        if initialize_client():
-            threading.Thread(target=trading_loop, daemon=True).start()
+        if auto_start_bot():
             return redirect('/')
         else:
-            bot_status['errors'].append("Failed to initialize API connection")
+            bot_status['errors'].append("Failed to start bot - check API connection")
             return redirect('/')
     return redirect('/')
 
 @app.route('/stop')
 def stop():
+    """Manual stop route"""
     bot_status['running'] = False
     bot_status['next_signal_time'] = None  # Clear next signal time when manually stopped
+    bot_status['last_stop_reason'] = 'manual'  # Mark as manual stop
+    # Note: Auto-restart monitor will not restart if manually stopped via web interface
+    print("Bot manually stopped via web interface")
     return redirect('/')
 
 @app.route('/strategy/<name>')
@@ -2637,6 +2727,31 @@ def set_strategy(name):
         error_msg = f"Error changing strategy: {str(e)}"
         log_error_to_csv(error_msg, "STRATEGY_ERROR", "set_strategy", "ERROR")
         print(error_msg)
+        return error_msg, 500
+
+@app.route('/autostart/<action>')
+def toggle_autostart(action):
+    """Enable/disable auto-start functionality"""
+    try:
+        if action.lower() == 'enable':
+            bot_status['auto_start'] = True
+            bot_status['auto_restart'] = True
+            message = "Auto-start and auto-restart enabled"
+            print(message)
+            log_error_to_csv(message, "CONFIG_CHANGE", "toggle_autostart", "INFO")
+        elif action.lower() == 'disable':
+            bot_status['auto_start'] = False
+            bot_status['auto_restart'] = False
+            message = "Auto-start and auto-restart disabled"
+            print(message)
+            log_error_to_csv(message, "CONFIG_CHANGE", "toggle_autostart", "INFO")
+        else:
+            return "Invalid action. Use 'enable' or 'disable'", 400
+            
+        return redirect('/')
+    except Exception as e:
+        error_msg = f"Error toggling auto-start: {str(e)}"
+        log_error_to_csv(error_msg, "CONFIG_ERROR", "toggle_autostart", "ERROR")
         return error_msg, 500
 
 @app.route('/api/status')
@@ -3757,5 +3872,33 @@ def health():
         }), 500
 
 if __name__ == '__main__':
+    print("\n🚀 Starting CRYPTIX AI Trading Bot...")
+    print("=" * 50)
+    
+    # Initialize auto-start and monitoring systems
+    try:
+        # Start the auto-restart monitor
+        start_auto_restart_monitor()
+        
+        # Auto-start the bot if enabled
+        if bot_status.get('auto_start', True):
+            print("🤖 Auto-starting trading bot...")
+            time.sleep(2)  # Give time for system to initialize
+            if auto_start_bot():
+                print("✅ Trading bot started successfully")
+            else:
+                print("⚠️  Auto-start failed, but web interface is available for manual start")
+        else:
+            print("ℹ️  Auto-start is disabled - use web interface to start bot")
+            
+    except Exception as e:
+        error_msg = f"Startup initialization error: {str(e)}"
+        print(f"❌ {error_msg}")
+        log_error_to_csv(error_msg, "STARTUP_ERROR", "__main__", "ERROR")
+        print("⚠️  Some features may not work properly")
+    
+    print("=" * 50)
+    print("🌐 Starting web interface...")
+    
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
