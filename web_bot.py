@@ -184,6 +184,36 @@ def format_cairo_time(dt=None):
     
     return dt.strftime('%Y-%m-%d %H:%M:%S %Z')
 
+def get_time_remaining_for_next_signal():
+    """Calculate time remaining until next signal in a human-readable format"""
+    try:
+        if not bot_status.get('next_signal_time') or not bot_status.get('running'):
+            return "Not scheduled"
+        
+        next_signal = bot_status['next_signal_time']
+        current_time = get_cairo_time()
+        
+        # If next_signal is naive datetime, make it timezone-aware
+        if next_signal.tzinfo is None:
+            next_signal = CAIRO_TZ.localize(next_signal)
+        
+        time_diff = next_signal - current_time
+        
+        if time_diff.total_seconds() <= 0:
+            return "Signal due now"
+        
+        # Convert to minutes and seconds
+        total_seconds = int(time_diff.total_seconds())
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        
+        if minutes > 0:
+            return f"{minutes}m {seconds}s"
+        else:
+            return f"{seconds}s"
+    except Exception as e:
+        return "Unknown"
+
 # CSV Trade History Logging
 def setup_csv_logging():
     """Initialize CSV logging directories and files while preserving existing data"""
@@ -423,6 +453,8 @@ bot_status = {
     'sentiment': 'neutral',
     'monitored_pairs': {},  # Track all monitored pairs' status
     'trading_strategy': 'STRICT',  # Current trading strategy (STRICT, MODERATE, ADAPTIVE)
+    'next_signal_time': None,  # Track when next signal will be generated
+    'signal_interval': 1800,  # Signal generation interval in seconds (30 minutes)
     'trading_summary': {
         'total_revenue': 0.0,
         'successful_trades': 0,
@@ -1644,6 +1676,10 @@ def trading_loop():
     # Initialize multi-coin tracking
     bot_status['monitored_pairs'] = {}
     
+    # Set initial next signal time
+    bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=scan_interval)
+    bot_status['signal_interval'] = scan_interval
+    
     while bot_status['running']:
         try:
             # Health check - ensure API connection is valid
@@ -1684,6 +1720,11 @@ def trading_loop():
                         }
                     })
                     print(f"Default pair signal: {signal} for {current_symbol}")
+                
+                # Set next signal time before sleeping
+                bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=scan_interval)
+                print(f"Next signal expected at: {format_cairo_time(bot_status['next_signal_time'])}")
+                
                 time.sleep(scan_interval)  # Use scan interval instead of 1 hour
                 continue
             
@@ -1782,8 +1823,12 @@ def trading_loop():
             if get_cairo_time().hour == 0:
                 log_daily_performance()
             
-            # Sleep between scans (1 minute)
+            # Set next signal time before sleeping
+            bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=scan_interval)
+            
+            # Sleep between scans
             print(f"\nSleeping for {scan_interval} seconds until next scan...")
+            print(f"Next signal expected at: {format_cairo_time(bot_status['next_signal_time'])}")
             time.sleep(scan_interval)
             
         except KeyboardInterrupt:
@@ -1811,14 +1856,15 @@ def trading_loop():
             # Exponential backoff for errors
             sleep_time = min(error_sleep_time * (2 ** (consecutive_errors - 1)), 1800)
             print(f"Waiting {sleep_time} seconds before retry...")
+            
+            # Update next signal time for error case
+            bot_status['next_signal_time'] = get_cairo_time() + timedelta(seconds=sleep_time)
+            
             time.sleep(sleep_time)
     
     print("Trading loop stopped")
     bot_status['running'] = False
-            
-    
-    print("Trading loop stopped")
-    bot_status['running'] = False
+    bot_status['next_signal_time'] = None  # Clear next signal time when stopped
 
 @app.route('/download_logs')
 def download_logs():
@@ -2119,6 +2165,16 @@ def home():
             color: #6c757d;
         }
         
+        .countdown-timer {
+            color: #667eea !important;
+            font-weight: bold !important;
+            font-family: 'Courier New', monospace;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 4px 8px;
+            border-radius: 5px;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+        
         .trades-container {
             max-height: 300px;
             overflow-y: auto;
@@ -2378,6 +2434,12 @@ def home():
                         <span class="stat-value">{{ status.total_trades }}</span>
                     </div>
                     <div class="stat-item">
+                        <span class="stat-label">Time for next Signal:</span>
+                        <span class="stat-value countdown-timer">
+                            {{ time_remaining }}
+                        </span>
+                    </div>
+                    <div class="stat-item">
                         <span class="stat-label">Uptime:</span>
                         <span class="stat-value">
                             {{ "{:.1f}".format(status.uptime.total_seconds() / 3600) if status.uptime else '0' }}h
@@ -2520,7 +2582,7 @@ def home():
     </div>
 </body>
 </html>
-    """, status=bot_status, current_time=format_cairo_time())
+    """, status=bot_status, current_time=format_cairo_time(), time_remaining=get_time_remaining_for_next_signal(), strategy_desc=strategy_desc)
 
 @app.route('/start')
 def start():
@@ -2536,6 +2598,7 @@ def start():
 @app.route('/stop')
 def stop():
     bot_status['running'] = False
+    bot_status['next_signal_time'] = None  # Clear next signal time when manually stopped
     return redirect('/')
 
 @app.route('/strategy/<name>')
