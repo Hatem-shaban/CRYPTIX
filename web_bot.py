@@ -454,7 +454,7 @@ bot_status = {
     'macd': {'macd': 0, 'signal': 0, 'trend': 'NEUTRAL'},
     'sentiment': 'neutral',
     'monitored_pairs': {},  # Track all monitored pairs' status
-    'trading_strategy': 'STRICT',  # Current trading strategy (STRICT, MODERATE, ADAPTIVE)
+    'trading_strategy': 'ADAPTIVE',  # Current trading strategy (STRICT, MODERATE, ADAPTIVE)
     'next_signal_time': None,  # Track when next signal will be generated
     'signal_interval': 1800,  # Signal generation interval in seconds (30 minutes)
     'trading_summary': {
