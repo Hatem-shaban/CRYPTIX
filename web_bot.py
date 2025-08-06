@@ -2561,7 +2561,7 @@ def home():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRYPTIX AI Trading Bot</title>
+    <title>🐺 CRYPTIX AI Trading Wolf</title>
     <style>
         * {
             margin: 0;
@@ -2569,720 +2569,515 @@ def home():
             box-sizing: border-box;
         }
         
-        .strategy-section {
-            padding: 20px;
-            text-align: center;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            margin: 20px 0;
-        }
-        
-        .strategy-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin: 20px 0;
-        }
-        
-        .strategy-btn {
-            padding: 12px 25px;
-            border: none;
-            border-radius: 25px;
-            color: white;
-            text-decoration: none;
-            font-weight: bold;
-            transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.2);
-        }
-        
-        .strategy-btn:hover {
-            transform: translateY(-2px);
-            background: rgba(255, 255, 255, 0.3);
-        }
-        
-        .strategy-btn.active {
-            background: #28a745;
-        }
-        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            padding: 15px;
+            color: #333;
         }
         
         .container {
-            max-width: 800px;
+            max-width: 420px;
             margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
             overflow: hidden;
+            backdrop-filter: blur(20px);
         }
         
         .header {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px;
+            padding: 25px 20px;
             text-align: center;
+            position: relative;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 1;
         }
         
         .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 15px;
-        }
-        
-        .robot-icon {
-            font-size: 2rem;
+            gap: 10px;
         }
         
         .subtitle {
-            font-size: 1.1rem;
+            font-size: 0.9rem;
             opacity: 0.9;
+            font-weight: 500;
         }
         
-        .status-section {
-            padding: 30px;
-            border-bottom: 1px solid #f0f0f0;
+        .main-content {
+            padding: 25px 20px;
         }
         
-        .status-cards {
+        /* Status Cards */
+        .status-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 25px;
         }
         
         .status-card {
-            padding: 20px;
-            border-radius: 15px;
+            padding: 16px;
+            border-radius: 16px;
             text-align: center;
             font-weight: 600;
+            font-size: 0.85rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+        
+        .status-card:hover {
+            transform: translateY(-2px);
         }
         
         .status-running {
-            background: #d4edda;
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
             color: #155724;
-            border: 2px solid #c3e6cb;
+            border: 1px solid #c3e6cb;
         }
         
         .status-stopped {
-            background: #f8d7da;
+            background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
             color: #721c24;
-            border: 2px solid #f5c6cb;
+            border: 1px solid #f5c6cb;
         }
         
         .status-connected {
-            background: #d1ecf1;
+            background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
             color: #0c5460;
-            border: 2px solid #bee5eb;
+            border: 1px solid #bee5eb;
         }
         
         .status-disconnected {
-            background: #fff3cd;
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
             color: #856404;
-            border: 2px solid #ffeaa7;
+            border: 1px solid #ffeaa7;
         }
         
-        .stats-section {
-            padding: 30px;
-        }
-        
-        .tabs {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #e9ecef;
-        }
-        
-        .tab {
-            padding: 15px 30px;
-            background: none;
-            border: none;
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #666;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-bottom: 3px solid transparent;
-        }
-        
-        .tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
-        
-        .tab:hover {
-            color: #667eea;
-            background: rgba(102, 126, 234, 0.1);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
+        .status-label {
             display: block;
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin-bottom: 4px;
         }
         
-        .stats-title {
-            font-size: 1.8rem;
-            color: #333;
+        .status-value {
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        
+        /* Wolf Intelligence Section */
+        .wolf-section {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 18px;
+            padding: 20px;
             margin-bottom: 25px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .wolf-title {
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #495057;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .wolf-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .wolf-card {
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .wolf-card .label {
+            opacity: 0.8;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        
+        .wolf-card .value {
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+        
+        /* Trading Info Section */
+        .trading-section {
+            background: white;
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e9ecef;
+        }
+        
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #495057;
+            margin-bottom: 15px;
             text-align: center;
         }
         
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 15px;
-        }
-        
-        .stat-item {
+        .info-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 20px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border-left: 4px solid #667eea;
+            padding: 12px 0;
+            border-bottom: 1px solid #f8f9fa;
         }
         
-        .stat-label {
-            font-weight: 600;
-            color: #555;
-        }
-        
-        .stat-value {
-            font-weight: 700;
-            color: #333;
-            font-size: 1.1rem;
-        }
-        
-        .signal-buy, .signal-bullish {
-            color: #28a745;
-        }
-        
-        .signal-sell, .signal-bearish {
-            color: #dc3545;
-        }
-        
-        .signal-hold, .signal-neutral {
-            color: #ffc107;
-        }
-        
-        .rsi-oversold {
-            color: #28a745;
-            font-weight: bold;
-        }
-        
-        .rsi-overbought {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        
-        .rsi-neutral {
-            color: #6c757d;
-        }
-        
-        .sentiment-bullish {
-            color: #28a745;
-        }
-        
-        .sentiment-bearish {
-            color: #dc3545;
-        }
-        
-        .sentiment-neutral {
-            color: #6c757d;
-        }
-        
-        .revenue-positive {
-            color: #28a745;
-            font-weight: bold;
-        }
-        
-        .revenue-negative {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        
-        .revenue-neutral {
-            color: #6c757d;
-        }
-        
-        .countdown-timer {
-            color: #667eea !important;
-            font-weight: bold !important;
-            font-family: 'Courier New', monospace;
-            background: rgba(102, 126, 234, 0.1);
-            padding: 4px 8px;
-            border-radius: 5px;
-            border: 1px solid rgba(102, 126, 234, 0.3);
-        }
-        
-        .trades-container {
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #e9ecef;
-            border-radius: 10px;
-            background: #f8f9fa;
-        }
-        
-        .trade-item {
-            padding: 15px;
-            border-bottom: 1px solid #e9ecef;
-            background: white;
-            margin-bottom: 1px;
-        }
-        
-        .trade-item:last-child {
+        .info-item:last-child {
             border-bottom: none;
         }
         
-        .trade-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
+        .info-label {
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 0.85rem;
         }
         
-        .trade-signal {
-            font-weight: bold;
-            padding: 4px 8px;
-            border-radius: 5px;
+        .info-value {
+            font-weight: 700;
+            color: #495057;
             font-size: 0.9rem;
         }
         
-        .trade-time {
-            color: #6c757d;
-            font-size: 0.8rem;
+        .signal-buy { color: #28a745; }
+        .signal-sell { color: #dc3545; }
+        .signal-hold { color: #6c757d; }
+        
+        .countdown-timer {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white !important;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-weight: 700;
+            font-size: 0.85rem;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
         }
         
-        .trade-details {
+        /* Strategy Section */
+        .strategy-section {
+            background: white;
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e9ecef;
+        }
+        
+        .strategy-desc {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        
+        .strategy-buttons {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+        
+        .strategy-btn {
+            padding: 14px;
+            border-radius: 14px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-align: center;
+            transition: all 0.3s ease;
             display: flex;
-            gap: 15px;
             align-items: center;
-            font-size: 0.9rem;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
         
-        .trade-value {
-            font-weight: bold;
-            color: #333;
+        .strategy-btn.active {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            transform: scale(1.02);
         }
         
-        .trade-status-badge {
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        
-        .status-success {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .status-failed, .status-api-error {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .status-insufficient-funds {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        .no-trades {
-            padding: 30px;
-            text-align: center;
-            color: #6c757d;
-            font-style: italic;
-        }
-        
-        .controls {
-            padding: 30px;
-            text-align: center;
+        .strategy-btn:not(.active) {
             background: #f8f9fa;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+        }
+        
+        .strategy-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* Controls */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
         }
         
         .btn {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 25px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
+            padding: 14px;
+            border-radius: 14px;
             text-decoration: none;
-            display: inline-block;
-            margin: 0 10px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-align: center;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
         
         .btn-start {
-            background: #28a745;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
             color: white;
-        }
-        
-        .btn-start:hover {
-            background: #218838;
-            transform: translateY(-2px);
         }
         
         .btn-stop {
-            background: #dc3545;
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
             color: white;
         }
         
-        .btn-stop:hover {
-            background: #c82333;
-            transform: translateY(-2px);
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+            color: white;
         }
         
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+            color: #212529;
+        }
+        
+        /* Footer */
         .footer {
-            padding: 20px;
             text-align: center;
-            color: #666;
-            font-size: 0.9rem;
+            padding: 20px;
+            font-size: 0.75rem;
+            color: #6c757d;
+            border-top: 1px solid #f8f9fa;
         }
         
-        .refresh-link {
+        .footer a {
             color: #667eea;
             text-decoration: none;
+            font-weight: 600;
         }
         
-        .refresh-link:hover {
-            text-decoration: underline;
+        /* Mobile Optimizations */
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .container { max-width: 100%; }
+            .header { padding: 20px 15px; }
+            .main-content { padding: 20px 15px; }
+            .header h1 { font-size: 1.6rem; }
+            .status-grid { gap: 8px; }
+            .wolf-grid { gap: 8px; }
+            .controls { grid-template-columns: 1fr; }
         }
         
-        @media (max-width: 600px) {
-            .status-cards {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .container {
-                margin: 10px;
-            }
-            
-            .tabs {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            .tab {
-                width: 100%;
-                max-width: 300px;
-                margin-bottom: 5px;
-                text-align: center;
-            }
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .countdown-timer {
+            animation: pulse 2s infinite;
+        }
+        
+        /* Responsive adjustments */
+        @media (min-width: 481px) and (max-width: 768px) {
+            .container { max-width: 480px; }
+            .strategy-buttons { grid-template-columns: 1fr; }
         }
     </style>
-    <script>
-        // Auto-refresh every 30 seconds
-        setTimeout(function() {
-            window.location.reload();
-        }, 30000);
-        
-        function refreshNow() {
-            window.location.reload();
-        }
-        
-        // Tab functionality
-        function showTab(tabName) {
-            // Hide all tab contents
-            var tabContents = document.querySelectorAll('.tab-content');
-            tabContents.forEach(function(tab) {
-                tab.classList.remove('active');
-            });
-            
-            // Remove active class from all tabs
-            var tabs = document.querySelectorAll('.tab');
-            tabs.forEach(function(tab) {
-                tab.classList.remove('active');
-            });
-            
-            // Show selected tab content
-            document.getElementById(tabName).classList.add('active');
-            
-            // Add active class to clicked tab
-            event.target.classList.add('active');
-        }
-    </script>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>
-                <span class="robot-icon">🤖</span>
-                CRYPTIX AI Trading Bot
-            </h1>
+            <div class="header-content">
+                <h1>
+                    🐺 CRYPTIX<br>Trading Wolf
+                </h1>
+                <div class="subtitle">Professional Trading Intelligence</div>
+            </div>
         </div>
         
-        <div class="status-section">
-            <div class="status-cards">
+        <div class="main-content">
+            <!-- Status Cards -->
+            <div class="status-grid">
                 <div class="status-card {{ 'status-running' if status.running else 'status-stopped' }}">
-                    <div style="font-size: 1.1rem;">Bot Status</div>
-                    <div style="font-size: 1.3rem; margin-top: 5px;">
-                        {{ 'Running' if status.running else 'Stopped' }}
-                    </div>
+                    <div class="status-label">Bot Status</div>
+                    <div class="status-value">{{ 'Running' if status.running else 'Stopped' }}</div>
                 </div>
                 <div class="status-card {{ 'status-connected' if status.api_connected else 'status-disconnected' }}">
-                    <div style="font-size: 1.1rem;">API Status</div>
-                    <div style="font-size: 1.3rem; margin-top: 5px;">
-                        {{ 'Connected (Testnet)' if status.api_connected else 'Disconnected' }}
-                    </div>
+                    <div class="status-label">API Status</div>
+                    <div class="status-value">{{ 'Connected' if status.api_connected else 'Disconnected' }}</div>
                 </div>
-                <div class="status-card {{ 'status-running' if status.auto_start else 'status-stopped' }}">
-                    <div style="font-size: 1.1rem;">Auto-Start</div>
-                    <div style="font-size: 1.3rem; margin-top: 5px;">
-                        {{ 'Enabled' if status.auto_start else 'Disabled' }}
+            </div>
+            
+            <!-- AI Wolf Intelligence -->
+            <div class="wolf-section">
+                <div class="wolf-title">
+                    🧠 AI Wolf Intelligence
+                </div>
+                <div class="wolf-grid">
+                    <div class="wolf-card" style="background: {{ '#d4edda' if status.get('market_regime') == 'EXTREME' else '#d1ecf1' if status.get('market_regime') == 'VOLATILE' else '#fff3cd' if status.get('market_regime') == 'QUIET' else '#e9ecef' }}; 
+                                               color: {{ '#155724' if status.get('market_regime') == 'EXTREME' else '#0c5460' if status.get('market_regime') == 'VOLATILE' else '#856404' if status.get('market_regime') == 'QUIET' else '#495057' }};">
+                        <div class="label">Market Regime</div>
+                        <div class="value">{{ status.get('market_regime', 'NORMAL') }}</div>
+                    </div>
+                    <div class="wolf-card" style="background: {{ '#f8d7da' if status.get('hunting_mode') else '#e9ecef' }}; 
+                                               color: {{ '#721c24' if status.get('hunting_mode') else '#495057' }};">
+                        <div class="label">Wolf Mode</div>
+                        <div class="value">{{ 'HUNTING 🎯' if status.get('hunting_mode') else 'PASSIVE' }}</div>
+                    </div>
+                    <div class="wolf-card" style="background: #e9ecef; color: #495057;">
+                        <div class="label">Scan Interval</div>
+                        <div class="value">{{ (status.get('signal_interval', 900) // 60) }}min</div>
+                    </div>
+                    <div class="wolf-card" style="background: #e9ecef; color: #495057;">
+                        <div class="label">Next Scan</div>
+                        <div class="value countdown-timer">{{ time_remaining }}</div>
                     </div>
                 </div>
             </div>
             
-            <!-- AI Wolf Intelligence Status -->
-            <div style="margin-top: 20px;">
-                <h3 style="text-align: center; color: #333; margin-bottom: 15px; font-size: 1.2rem;">
-                    🐺 AI Trading Wolf Intelligence
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px;">
-                    <div class="status-card" style="background: {{ '#d4edda' if status.get('market_regime') == 'EXTREME' else '#d1ecf1' if status.get('market_regime') == 'VOLATILE' else '#fff3cd' if status.get('market_regime') == 'QUIET' else '#e2e3e5' }}; 
-                                                   color: {{ '#155724' if status.get('market_regime') == 'EXTREME' else '#0c5460' if status.get('market_regime') == 'VOLATILE' else '#856404' if status.get('market_regime') == 'QUIET' else '#383d41' }}; 
-                                                   border: 2px solid {{ '#c3e6cb' if status.get('market_regime') == 'EXTREME' else '#bee5eb' if status.get('market_regime') == 'VOLATILE' else '#ffeaa7' if status.get('market_regime') == 'QUIET' else '#d6d8db' }};">
-                        <div style="font-size: 0.9rem;">Market Regime</div>
-                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
-                            {{ status.get('market_regime', 'NORMAL') }}
-                        </div>
-                    </div>
-                    <div class="status-card" style="background: {{ '#f8d7da' if status.get('hunting_mode') else '#e2e3e5' }}; 
-                                                   color: {{ '#721c24' if status.get('hunting_mode') else '#383d41' }}; 
-                                                   border: 2px solid {{ '#f5c6cb' if status.get('hunting_mode') else '#d6d8db' }};">
-                        <div style="font-size: 0.9rem;">Hunting Mode</div>
-                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
-                            {{ 'ACTIVE 🎯' if status.get('hunting_mode') else 'PASSIVE' }}
-                        </div>
-                    </div>
-                    <div class="status-card" style="background: #e2e3e5; color: #383d41; border: 2px solid #d6d8db;">
-                        <div style="font-size: 0.9rem;">Scan Interval</div>
-                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
-                            {{ (status.get('signal_interval', 900) // 60) }}m
-                        </div>
-                    </div>
-                    <div class="status-card" style="background: #e2e3e5; color: #383d41; border: 2px solid #d6d8db;">
-                        <div style="font-size: 0.9rem;">Volatility</div>
-                        <div style="font-size: 1.1rem; margin-top: 5px; font-weight: bold;">
-                            {{ "{:.2f}".format(status.get('volatility_metrics', {}).get('hourly_vol', 0)) if status.get('volatility_metrics') else 'N/A' }}
-                        </div>
-                    </div>
+            <!-- Trading Information -->
+            <div class="trading-section">
+                <div class="section-title">📊 Trading Status</div>
+                <div class="info-item">
+                    <span class="info-label">Last Signal</span>
+                    <span class="info-value signal-{{ status.last_signal.lower() }}">{{ status.last_signal }}</span>
                 </div>
-            </div>
-        </div>
-        
-        <div class="stats-section">
-            <div class="tabs">
-                <button class="tab" onclick="showTab('strategy')">🎯 Trading Strategy</button>
-                <button class="tab active" onclick="showTab('statistics')">📊 Trading Statistics</button>
-                <button class="tab" onclick="showTab('performance')">📈 Trading Performance</button>
-            </div>
-            
-            <!-- Trading Statistics Tab -->
-            <div id="statistics" class="tab-content active">
-                <h2 class="stats-title">Current Trading Data</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">Last Signal:</span>
-                        <span class="stat-value signal-{{ status.last_signal.lower() }}">
-                            {{ status.last_signal }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Current Symbol:</span>
-                        <span class="stat-value">
-                            {{ status.current_symbol }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Current Price:</span>
-                        <span class="stat-value">
-                            ${{ "{:,.2f}".format(status.last_price) if status.last_price else 'N/A' }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Last Update:</span>
-                        <span class="stat-value">
-                            {{ status.last_update or 'Never' }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total Trades:</span>
-                        <span class="stat-value">{{ status.total_trades }}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Time for next Signal:</span>
-                        <span class="stat-value countdown-timer">
-                            {{ time_remaining }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Uptime:</span>
-                        <span class="stat-value">
-                            {{ "{:.1f}".format(status.uptime.total_seconds() / 3600) if status.uptime else '0' }}h
-                        </span>
-                    </div>
+                <div class="info-item">
+                    <span class="info-label">Current Symbol</span>
+                    <span class="info-value">{{ status.current_symbol }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Current Price</span>
+                    <span class="info-value">${{ "{:,.2f}".format(status.last_price) if status.last_price else 'N/A' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Total Revenue</span>
+                    <span class="info-value" style="color: {{ '#28a745' if status.trading_summary.total_revenue > 0 else '#dc3545' if status.trading_summary.total_revenue < 0 else '#6c757d' }}">
+                        ${{ "{:,.2f}".format(status.trading_summary.total_revenue) }}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Win Rate</span>
+                    <span class="info-value">{{ "{:.1f}".format(status.trading_summary.win_rate) }}%</span>
                 </div>
             </div>
             
-            <!-- Trading Strategy Tab -->
-            <div id="strategy" class="tab-content">
-                <h2 class="stats-title">Trading Strategy Configuration</h2>
-                <div class="strategy-container" style="padding: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; margin-bottom: 30px;">
-                    <div style="text-align: center; margin-bottom: 25px;">
-                        <p style="color: #666; margin: 0; font-size: 1rem; line-height: 1.5;">{{ strategy_desc }}</p>
-                    </div>
-                    <div class="strategy-buttons" style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
-                        <a href="/strategy/strict" class="strategy-btn" style="flex: 1; min-width: 150px; max-width: 250px; padding: 15px 25px; background: {{ '#28a745' if status.trading_strategy == 'STRICT' else '#6c757d' }}; color: white; text-decoration: none; border-radius: 25px; transition: all 0.3s ease; text-align: center; font-size: 1rem; display: flex; align-items: center; justify-content: center; margin: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <span style="margin-right: 8px; font-size: 1.2rem;">🎯</span> 
-                            <div style="text-align: left;">
-                                <div style="font-weight: bold;">Strict</div>
-                                <div style="font-size: 0.8rem; opacity: 0.9">Conservative Trading</div>
-                            </div>
-                        </a>
-                        <a href="/strategy/moderate" class="strategy-btn" style="flex: 1; min-width: 150px; max-width: 250px; padding: 15px 25px; background: {{ '#28a745' if status.trading_strategy == 'MODERATE' else '#6c757d' }}; color: white; text-decoration: none; border-radius: 25px; transition: all 0.3s ease; text-align: center; font-size: 1rem; display: flex; align-items: center; justify-content: center; margin: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <span style="margin-right: 8px; font-size: 1.2rem;">⚖️</span>
-                            <div style="text-align: left;">
-                                <div style="font-weight: bold;">Moderate</div>
-                                <div style="font-size: 0.8rem; opacity: 0.9">Balanced Approach</div>
-                            </div>
-                        </a>
-                        <a href="/strategy/adaptive" class="strategy-btn" style="flex: 1; min-width: 150px; max-width: 250px; padding: 15px 25px; background: {{ '#28a745' if status.trading_strategy == 'ADAPTIVE' else '#6c757d' }}; color: white; text-decoration: none; border-radius: 25px; transition: all 0.3s ease; text-align: center; font-size: 1rem; display: flex; align-items: center; justify-content: center; margin: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <span style="margin-right: 8px; font-size: 1.2rem;">🧠</span>
-                            <div style="text-align: left;">
-                                <div style="font-weight: bold;">Adaptive</div>
-                                <div style="font-size: 0.8rem; opacity: 0.9">Smart & Dynamic</div>
-                            </div>
-                        </a>
-                    </div>
+            <!-- Strategy Section -->
+            <div class="strategy-section">
+                <div class="section-title">🎯 Trading Strategy</div>
+                <div class="strategy-desc">{{ strategy_desc }}</div>
+                <div class="strategy-buttons">
+                    <a href="/strategy/strict" class="strategy-btn {{ 'active' if status.trading_strategy == 'STRICT' else '' }}">
+                        🎯 <span>Strict - Conservative Trading</span>
+                    </a>
+                    <a href="/strategy/moderate" class="strategy-btn {{ 'active' if status.trading_strategy == 'MODERATE' else '' }}">
+                        ⚖️ <span>Moderate - Balanced Approach</span>
+                    </a>
+                    <a href="/strategy/adaptive" class="strategy-btn {{ 'active' if status.trading_strategy == 'ADAPTIVE' else '' }}">
+                        🧠 <span>Adaptive - Smart & Dynamic</span>
+                    </a>
                 </div>
             </div>
             
-            <!-- Trading Performance Tab -->
-            <div id="performance" class="tab-content">
-                <h2 class="stats-title">Revenue & Performance Metrics</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">Total Revenue:</span>
-                        <span class="stat-value revenue-{{ 'positive' if status.trading_summary.total_revenue > 0 else 'negative' if status.trading_summary.total_revenue < 0 else 'neutral' }}">
-                            ${{ "{:,.2f}".format(status.trading_summary.total_revenue) }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Win Rate:</span>
-                        <span class="stat-value">
-                            {{ "{:.1f}".format(status.trading_summary.win_rate) }}%
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Successful Trades:</span>
-                        <span class="stat-value">{{ status.trading_summary.successful_trades }}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Failed Trades:</span>
-                        <span class="stat-value">{{ status.trading_summary.failed_trades }}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total Buy Volume:</span>
-                        <span class="stat-value">
-                            ${{ "{:,.2f}".format(status.trading_summary.total_buy_volume) }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total Sell Volume:</span>
-                        <span class="stat-value">
-                            ${{ "{:,.2f}".format(status.trading_summary.total_sell_volume) }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Average Trade Size:</span>
-                        <span class="stat-value">
-                            ${{ "{:,.2f}".format(status.trading_summary.average_trade_size) }}
-                        </span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Profit Factor:</span>
-                        <span class="stat-value revenue-{{ 'positive' if status.trading_summary.total_revenue > 0 else 'negative' if status.trading_summary.total_revenue < 0 else 'neutral' }}">
-                            {% if status.trading_summary.total_buy_volume > 0 %}
-                                {{ "{:.2f}".format((status.trading_summary.total_buy_volume + status.trading_summary.total_revenue) / status.trading_summary.total_buy_volume) }}
-                            {% else %}
-                                1.00
-                            {% endif %}
-                        </span>
-                    </div>
-                </div>
-                
-                <!-- Recent Trades History -->
-                <div style="margin-top: 30px;">
-                    <h3 style="color: #333; margin-bottom: 15px;">📋 Recent Trades</h3>
-                    <div class="trades-container">
-                        {% if status.trading_summary.trades_history %}
-                            {% for trade in status.trading_summary.trades_history[:5] %}
-                            <div class="trade-item trade-{{ trade.status }}">
-                                <div class="trade-header">
-                                    <span class="trade-signal signal-{{ trade.signal.lower() }}">{{ trade.signal }}</span>
-                                    <span class="trade-time">{{ trade.timestamp }}</span>
-                                </div>
-                                <div class="trade-details">
-                                    <span>{{ trade.quantity }} {{ trade.symbol[:3] }}</span>
-                                    {% if trade.price > 0 %}
-                                        <span>@ ${{ "{:,.2f}".format(trade.price) }}</span>
-                                        <span class="trade-value">${{ "{:,.2f}".format(trade.value) }}</span>
-                                    {% endif %}
-                                    <span class="trade-status-badge status-{{ trade.status }}">{{ trade.status.replace('_', ' ').title() }}</span>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <div class="no-trades">
-                                <p>No trades executed yet. Start the bot to begin trading!</p>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
+            <!-- Controls -->
+            <div class="controls">
+                <a href="/start" class="btn btn-start">🚀 Start Bot</a>
+                <a href="/stop" class="btn btn-stop">🛑 Stop Bot</a>
             </div>
-        </div>
-        
-        <div class="controls">
-            <a href="/start" class="btn btn-start">Start Bot</a>
-            <a href="/stop" class="btn btn-stop">Stop Bot</a>
-            <a href="/logs" class="btn" style="background: #17a2b8; color: white;">📋 View Logs</a>
-            <div style="margin-top: 15px;">
+            
+            <div style="margin-bottom: 15px;">
                 {% if status.auto_start %}
-                    <a href="/autostart/disable" class="btn" style="background: #ffc107; color: #212529;">🔄 Disable Auto-Start</a>
+                    <a href="/autostart/disable" class="btn btn-warning" style="width: 100%; display: block;">🔄 Disable Auto-Start</a>
                 {% else %}
-                    <a href="/autostart/enable" class="btn" style="background: #28a745; color: white;">🔄 Enable Auto-Start</a>
+                    <a href="/autostart/enable" class="btn btn-secondary" style="width: 100%; display: block;">🔄 Enable Auto-Start</a>
                 {% endif %}
+            </div>
+            
+            <div>
+                <a href="/logs" class="btn btn-secondary" style="width: 100%; display: block;">📋 View Logs</a>
             </div>
         </div>
         
         <div class="footer">
             <div style="margin-bottom: 10px;">
-                <strong>Current Cairo Time: {{ current_time }}</strong>
+                <strong>Cairo Time: {{ current_time }}</strong>
             </div>
-            Page auto-refreshes every 30 seconds • 
-            <a href="javascript:refreshNow()" class="refresh-link">Manual Refresh</a>
+            Auto-refresh every 30s • <a href="javascript:location.reload()">Manual Refresh</a>
         </div>
     </div>
+    
+    <script>
+        // Auto-refresh every 30 seconds
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+        
+        // Add touch feedback for mobile
+        document.querySelectorAll('.btn, .strategy-btn').forEach(button => {
+            button.addEventListener('touchstart', function() {
+                this.style.transform = 'scale(0.98)';
+            });
+            button.addEventListener('touchend', function() {
+                this.style.transform = '';
+            });
+        });
+    </script>
 </body>
 </html>
     """, status=bot_status, current_time=format_cairo_time(), time_remaining=get_time_remaining_for_next_signal(), strategy_desc=strategy_desc)
+
 
 @app.route('/start')
 def start():
