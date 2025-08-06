@@ -1553,11 +1553,12 @@ def signal_generator(df, symbol="BTCUSDT"):
     
     # Handle NaN values
     if pd.isna(rsi) or pd.isna(macd) or pd.isna(sma5) or pd.isna(sma20):
-        log_signal_to_csv("HOLD", current_price, {'rsi': rsi, 'macd': macd, 'sentiment': sentiment}, "NaN values detected")
+        log_signal_to_csv("HOLD", current_price, {'symbol': symbol, 'rsi': rsi, 'macd': macd, 'sentiment': sentiment}, "NaN values detected")
         return "HOLD"
         
     # Prepare indicators dictionary for strategies
     indicators = {
+        'symbol': symbol,  # Add symbol to indicators for proper logging
         'rsi': rsi,
         'macd': macd,
         'macd_trend': macd_trend,
