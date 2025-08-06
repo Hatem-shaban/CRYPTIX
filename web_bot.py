@@ -3177,154 +3177,310 @@ def view_logs():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Bot Logs</title>
+    <title>📋 CRYPTIX Logs</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 0; 
-            background: #f5f5f5; 
-            padding: 10px;
-        }
-        .container { 
-            max-width: 1200px; 
-            margin: 0 auto; 
-            background: white; 
-            padding: 15px; 
-            border-radius: 10px;
-            overflow-x: hidden;
-        }
-        .header { 
-            text-align: center; 
-            margin-bottom: 20px; 
-        }
-        .header h1 {
-            font-size: 1.8rem;
-            margin-bottom: 15px;
-        }
-        .log-section { 
-            margin-bottom: 25px;
-            overflow-x: auto;
-        }
-        .log-title { 
-            font-size: 1.3rem; 
-            color: #333; 
-            margin-bottom: 15px; 
-            border-bottom: 2px solid #667eea; 
-            padding-bottom: 5px; 
-        }
-        .log-links { 
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 20px; 
-        }
-        .log-links a { 
-            padding: 10px 15px; 
-            background: #667eea; 
-            color: white; 
-            text-decoration: none; 
-            border-radius: 5px;
-            flex: 1 1 auto;
-            text-align: center;
-            min-width: 140px;
-            font-size: 0.9rem;
-        }
-        .log-links a:hover { 
-            background: #5a6fd8; 
-        }
-        .table-wrapper {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            margin: 0 -15px;
-            padding: 0 15px;
-        }
-        table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-top: 15px;
-            min-width: 600px;
-        }
-        th, td { 
-            padding: 10px 12px; 
-            border: 1px solid #ddd; 
-            text-align: left; 
-            font-size: 0.9rem;
-            white-space: nowrap;
-        }
-        th { 
-            background: #f8f9fa; 
-            font-weight: bold;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-        }
-        tr:nth-child(even) { 
-            background: #f9f9f9; 
-        }
-        .back-link { 
-            display: inline-block; 
-            margin-bottom: 20px; 
-            padding: 12px 20px; 
-            background: #28a745; 
-            color: white; 
-            text-decoration: none; 
-            border-radius: 5px;
-            font-size: 0.9rem;
-            text-align: center;
-        }
-        .back-link:hover { 
-            background: #218838; 
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
         
-        @media (max-width: 768px) {
-            body {
-                padding: 5px;
-            }
-            .container {
-                padding: 10px;
-            }
-            .header h1 {
-                font-size: 1.5rem;
-            }
-            .log-links {
-                flex-direction: column;
-            }
-            .log-links a {
-                width: 100%;
-                min-width: unset;
-            }
-            th, td {
-                padding: 8px 10px;
-                font-size: 0.85rem;
-            }
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 15px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 420px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            backdrop-filter: blur(20px);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px 20px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            font-weight: 500;
+        }
+        
+        .main-content {
+            padding: 25px 20px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 25px;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 14px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+            transition: all 0.3s ease;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
+        }
+        
+        /* Log Files Section */
+        .log-section {
+            background: white;
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e9ecef;
+        }
+        
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #495057;
+            margin-bottom: 15px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .log-links {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        
+        .log-links a {
+            padding: 16px;
+            border-radius: 14px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .log-links a:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .log-links a.download {
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+            color: #212529;
+        }
+        
+        .log-links a.download:hover {
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+        }
+        
+        /* Stats Section */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
+        
+        .stat-value {
+            font-weight: 700;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.75rem;
+            color: #6c757d;
+            border-top: 1px solid #f8f9fa;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .container { max-width: 100%; }
+            .header { padding: 20px 15px; }
+            .main-content { padding: 20px 15px; }
+            .header h1 { font-size: 1.6rem; }
+        }
+        
+        /* Touch feedback */
+        .log-links a {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* Responsive adjustments */
+        @media (min-width: 481px) and (max-width: 768px) {
+            .container { max-width: 480px; }
+            .log-links { grid-template-columns: 1fr 1fr; }
+            .log-links a.download { grid-column: 1 / -1; }
+        }
+        
+        @media (min-width: 769px) {
+            .container { max-width: 600px; }
+            .log-links { grid-template-columns: 1fr 1fr; }
+            .log-links a.download { grid-column: 1 / -1; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📋 Trading Bot Logs</h1>
-            <a href="/" class="back-link">← Back to Dashboard</a>
-        </div>
-        
-        <div class="log-section">
-            <h2 class="log-title">Available Log Files</h2>
-            <div class="log-links">
-                <a href="/logs/trades">📊 Trade History</a>
-                <a href="/logs/signals">📈 Signal History</a>
-                <a href="/logs/performance">📉 Daily Performance</a>
-                <a href="/logs/errors">❌ Error Log</a>
-                <a href="/download_logs">💾 Download All CSV Files</a>
+            <div class="header-content">
+                <h1>
+                    📋 CRYPTIX<br>Trading Logs
+                </h1>
+                <div class="subtitle">Activity & Performance Monitoring</div>
             </div>
         </div>
         
-        <div class="log-section">
-            <h2 class="log-title">Quick Stats</h2>
-            <p><strong>Total Trades Logged:</strong> {{ total_trades }}</p>
-            <p><strong>CSV Files Location:</strong> /logs/</p>
-            <p><strong>Last Updated:</strong> {{ current_time }}</p>
+        <div class="main-content">
+            <a href="/" class="back-link">← Back to Dashboard</a>
+            
+            <!-- Log Files Section -->
+            <div class="log-section">
+                <div class="section-title">
+                    📊 Available Log Files
+                </div>
+                <div class="log-links">
+                    <a href="/logs/trades">
+                        📊 <span>Trade History</span>
+                    </a>
+                    <a href="/logs/signals">
+                        📈 <span>Signal History</span>
+                    </a>
+                    <a href="/logs/performance">
+                        📉 <span>Daily Performance</span>
+                    </a>
+                    <a href="/logs/errors">
+                        ❌ <span>Error Log</span>
+                    </a>
+                    <a href="/download_logs" class="download">
+                        💾 <span>Download All CSV Files</span>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Quick Stats Section -->
+            <div class="log-section">
+                <div class="section-title">
+                    📈 Quick Statistics
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Total Trades Logged</span>
+                        <span class="stat-value">{{ total_trades }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">CSV Files Location</span>
+                        <span class="stat-value">/logs/</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Last Updated</span>
+                        <span class="stat-value">{{ current_time }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <div style="margin-bottom: 10px;">
+                <strong>Cairo Time: {{ current_time }}</strong>
+            </div>
+            <a href="javascript:location.reload()">Refresh Data</a>
         </div>
     </div>
+    
+    <script>
+        // Add touch feedback for mobile
+        document.querySelectorAll('.log-links a, .back-link').forEach(button => {
+            button.addEventListener('touchstart', function() {
+                this.style.transform = 'scale(0.98)';
+            });
+            button.addEventListener('touchend', function() {
+                this.style.transform = '';
+            });
+        });
+    </script>
 </body>
 </html>
     """, total_trades=len(get_csv_trade_history()), current_time=format_cairo_time())
