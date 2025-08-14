@@ -1,0 +1,15 @@
+timestamp,cairo_time,error_type,error_message,function_name,severity,bot_status
+2025-08-13T13:38:00.714560,2025-08-13 16:38:00 EEST,STRATEGY_CHANGE,Strategy changed from ADAPTIVE to MODERATE,set_strategy,INFO,False
+2025-08-13T13:59:53.740116,2025-08-13 16:59:53 EEST,API_ERROR,APIError(code=-1013): Filter failure: NOTIONAL,execute_trade,ERROR,True
+2025-08-13T14:03:20.277701,2025-08-13 17:03:20 EEST,API_ERROR,APIError(code=-1013): Filter failure: NOTIONAL,execute_trade,ERROR,True
+2025-08-13T14:06:06.178060,2025-08-13 17:06:06 EEST,RISK_WARNING,Consecutive losses: 3,update_trade_tracking,WARNING,True
+2025-08-13T14:06:06.178978,2025-08-13 17:06:06 EEST,API_ERROR,APIError(code=-1013): Filter failure: NOTIONAL,execute_trade,ERROR,True
+2025-08-13T14:10:19.099844,2025-08-13 17:10:19 EEST,BALANCE_ERROR,Insufficient ADA for sell order,execute_trade,WARNING,True
+2025-08-13T14:25:29.486370,2025-08-13 17:25:29 EEST,BALANCE_ERROR,Insufficient ADA for sell order,execute_trade,WARNING,True
+2025-08-13T14:40:42.783790,2025-08-13 17:40:42 EEST,BALANCE_ERROR,Insufficient ADA for sell order,execute_trade,WARNING,True
+2025-08-13T14:45:55.094048,2025-08-13 17:45:55 EEST,BALANCE_ERROR,Insufficient DOT for sell order,execute_trade,WARNING,True
+2025-08-13T14:51:07.184977,2025-08-13 17:51:07 EEST,BALANCE_ERROR,Insufficient ADA for sell order,execute_trade,WARNING,True
+2025-08-13T14:56:19.143964,2025-08-13 17:56:19 EEST,BALANCE_ERROR,Insufficient ADA for sell order,execute_trade,WARNING,True
+2025-08-13T15:01:31.381435,2025-08-13 18:01:31 EEST,BALANCE_ERROR,Insufficient BTC for sell order,execute_trade,WARNING,True
+2025-08-13T15:06:43.180501,2025-08-13 18:06:43 EEST,BALANCE_ERROR,Insufficient BTC for sell order,execute_trade,WARNING,True
+2025-08-13T15:07:27.490679,2025-08-13 18:07:27 EEST,STRATEGY_CHANGE,Strategy changed from MODERATE to STRICT,set_strategy,INFO,True
