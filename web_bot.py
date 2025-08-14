@@ -556,6 +556,8 @@ print("🔧 Loading API credentials...")
 api_key = None
 api_secret = None
 client = None
+# Lock to prevent multiple initializations in multi-threaded scenarios
+client_init_lock = threading.Lock()
 
 # Try multiple methods to get environment variables (important for Render)
 try:
@@ -639,13 +641,14 @@ def get_sentiment_score(text):
 def initialize_client():
     global client, bot_status, api_key, api_secret
     try:
-        # Skip if already connected and client exists
-        if client and bot_status.get('api_connected', False):
-            print("✅ API client already connected")
-            return True
-            
-        # Reload environment variables to ensure we have latest values
-        load_dotenv()
+        # Prevent multiple initializations using a lock
+        with client_init_lock:
+            # Skip if already connected and client exists
+            if client and bot_status.get('api_connected', False):
+                print("✅ API client already connected")
+                return True
+            # Reload environment variables to ensure we have latest values
+            load_dotenv()
         
         # Get API credentials with multiple fallback methods for Render
         api_key = (
