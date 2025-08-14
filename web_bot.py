@@ -1897,6 +1897,13 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
                 # Calculate quantity based on risk amount and current price
                 raw_qty = risk_amount / current_price
                 print(f"Raw quantity (before adjustments): {raw_qty}")
+                
+                # Ensure minimum trade value (Binance requires ~$10 minimum)
+                min_trade_value = 10.0  # $10 minimum trade value
+                if raw_qty * current_price < min_trade_value:
+                    raw_qty = min_trade_value / current_price
+                    print(f"Adjusted quantity for minimum trade value ($10): {raw_qty}")
+                
                 qty = max(min_qty, raw_qty)
                 print(f"Quantity after minimum check: {qty}")
                 
