@@ -369,26 +369,33 @@ last_signals = {}
 
 def log_signal_to_csv(signal, price, indicators, reason=""):
     """Log trading signal to CSV file with duplicate prevention"""
+    global last_signals
     try:
         symbol = indicators.get('symbol', 'UNKNOWN')
         current_time = datetime.now()
         
-        # Create a unique key for this signal
-        signal_key = f"{symbol}_{signal}_{price:.6f}"
+        print(f"🔍 Attempting to log signal: {signal} for {symbol} at ${price:.4f}")  # Debug
         
-        # Check if we've logged this exact signal recently (within 30 seconds)
-        if signal_key in last_signals:
-            time_diff = (current_time - last_signals[signal_key]).total_seconds()
-            if time_diff < 30:  # Prevent duplicates within 30 seconds
-                print(f"⚠️ Duplicate signal prevented: {signal} for {symbol} (last logged {time_diff:.1f}s ago)")
-                return
+        # Temporarily disable duplicate prevention for debugging
+        # Create a unique key for this signal (less strict - only symbol and signal)
+        # signal_key = f"{symbol}_{signal}"
+        
+        # Different time limits for different signal types
+        # time_limit = 60 if signal == "HOLD" else 15  # 60 seconds for HOLD, 15 for BUY/SELL
+        
+        # Check if we've logged this signal recently
+        # if signal_key in last_signals:
+        #     time_diff = (current_time - last_signals[signal_key]).total_seconds()
+        #     if time_diff < time_limit:
+        #         print(f"⚠️ Duplicate signal prevented: {signal} for {symbol} (last logged {time_diff:.1f}s ago)")
+        #         return
         
         # Update the last signal time
-        last_signals[signal_key] = current_time
+        # last_signals[signal_key] = current_time
         
         # Clean up old entries to prevent memory buildup (keep only last hour)
-        cutoff_time = current_time - timedelta(hours=1)
-        last_signals = {k: v for k, v in last_signals.items() if v > cutoff_time}
+        # cutoff_time = current_time - timedelta(hours=1)
+        # last_signals = {k: v for k, v in last_signals.items() if v > cutoff_time}
         
         csv_files = setup_csv_logging()
         
@@ -411,8 +418,13 @@ def log_signal_to_csv(signal, price, indicators, reason=""):
             writer = csv.writer(f)
             writer.writerow(signal_data)
             
+        print(f"✅ Signal logged: {signal} for {symbol} at ${price:.4f} - {reason}")  # Debug confirmation
+            
     except Exception as e:
-        print(f"Error logging signal to CSV: {e}")
+        print(f"❌ Error logging signal to CSV: {e}")
+        # Log the error for debugging
+        import traceback
+        print(f"Stack trace: {traceback.format_exc()}")
 
 def log_daily_performance():
     """Log daily performance summary to CSV"""
