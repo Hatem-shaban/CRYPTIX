@@ -364,16 +364,39 @@ def log_trade_to_csv(trade_info, additional_data=None):
     except Exception as e:
         print(f"Error logging trade to CSV: {e}")
 
+# Global signal tracking to prevent duplicates
+last_signals = {}
+
 def log_signal_to_csv(signal, price, indicators, reason=""):
-    """Log trading signal to CSV file"""
+    """Log trading signal to CSV file with duplicate prevention"""
     try:
+        symbol = indicators.get('symbol', 'UNKNOWN')
+        current_time = datetime.now()
+        
+        # Create a unique key for this signal
+        signal_key = f"{symbol}_{signal}_{price:.6f}"
+        
+        # Check if we've logged this exact signal recently (within 30 seconds)
+        if signal_key in last_signals:
+            time_diff = (current_time - last_signals[signal_key]).total_seconds()
+            if time_diff < 30:  # Prevent duplicates within 30 seconds
+                print(f"⚠️ Duplicate signal prevented: {signal} for {symbol} (last logged {time_diff:.1f}s ago)")
+                return
+        
+        # Update the last signal time
+        last_signals[signal_key] = current_time
+        
+        # Clean up old entries to prevent memory buildup (keep only last hour)
+        cutoff_time = current_time - timedelta(hours=1)
+        last_signals = {k: v for k, v in last_signals.items() if v > cutoff_time}
+        
         csv_files = setup_csv_logging()
         
         signal_data = [
             datetime.now().isoformat(),
             format_cairo_time(),
             signal,
-            indicators.get('symbol', 'UNKNOWN'),  # Include symbol in logging
+            symbol,
             price,
             indicators.get('rsi', 0),
             indicators.get('macd', 0),
@@ -2358,35 +2381,53 @@ def trading_loop():
             if not opportunities:
                 print("😴 No significant opportunities found - Wolf resting")
                 
-                # Fallback to default pair
+                # Fallback to default pair (only if not already processed)
                 current_symbol = "BTCUSDT"
-                df = fetch_data(symbol=current_symbol, interval="5m", limit=100)
-                if df is not None:
-                    signal = signal_generator(df, current_symbol)
-                    current_price = float(df['close'].iloc[-1])
+                
+                # Check if BTCUSDT was already processed in recent scan (within last 60 seconds)
+                last_btc_scan = bot_status.get('last_btc_scan_time')
+                current_time = get_cairo_time()
+                
+                if (last_btc_scan is None or 
+                    (current_time - last_btc_scan).total_seconds() > 60):
                     
-                    bot_status.update({
-                        'current_symbol': current_symbol,
-                        'last_signal': signal,
-                        'last_price': current_price,
-                        'last_update': format_cairo_time(),
-                        'rsi': float(df['rsi'].iloc[-1]),
-                        'macd': {
-                            'macd': float(df['macd'].iloc[-1]),
-                            'signal': float(df['macd_signal'].iloc[-1]),
-                            'trend': df['macd_trend'].iloc[-1]
-                        }
-                    })
-                    print(f"📊 Default analysis: {signal} for {current_symbol}")
+                    df = fetch_data(symbol=current_symbol, interval="5m", limit=100)
+                    if df is not None:
+                        signal = signal_generator(df, current_symbol)
+                        current_price = float(df['close'].iloc[-1])
+                        
+                        bot_status.update({
+                            'current_symbol': current_symbol,
+                            'last_signal': signal,
+                            'last_price': current_price,
+                            'last_update': format_cairo_time(),
+                            'rsi': float(df['rsi'].iloc[-1]),
+                            'macd': {
+                                'macd': float(df['macd'].iloc[-1]),
+                                'signal': float(df['macd_signal'].iloc[-1]),
+                                'trend': df['macd_trend'].iloc[-1]
+                            },
+                            'last_btc_scan_time': current_time  # Track when we last scanned BTC
+                        })
+                        print(f"📊 Default analysis: {signal} for {current_symbol}")
+                else:
+                    print(f"⚠️ Skipping default {current_symbol} scan - analyzed recently")
             else:
                 print(f"🎯 Found {len(opportunities)} hunting targets")
                 
                 # Process top opportunities with intelligent prioritization
                 max_targets = 2 if bot_status.get('hunting_mode') else 1
+                processed_symbols = set()  # Track processed symbols to avoid duplicates
                 
                 for i, opportunity in enumerate(opportunities[:max_targets]):
                     current_symbol = opportunity['symbol']
                     current_score = opportunity.get('score', 0)
+                    
+                    # Skip if we've already processed this symbol in this cycle
+                    if current_symbol in processed_symbols:
+                        print(f"⚠️ Skipping {current_symbol} - already processed in this cycle")
+                        continue
+                    processed_symbols.add(current_symbol)
                     
                     print(f"\n🎯 === TARGET {i+1}: {current_symbol} ===")
                     print(f"💪 Score: {current_score:.1f}")
