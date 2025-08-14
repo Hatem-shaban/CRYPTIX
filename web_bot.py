@@ -528,11 +528,11 @@ bot_status = {
     'hunting_mode': False,  # Aggressive opportunity hunting mode
     'last_volatility_check': None,  # Track when we last checked volatility
     'adaptive_intervals': {
-        'QUIET': 900,       # 15 minutes during quiet markets (reduced from 30min)
-        'NORMAL': 300,      # 5 minutes during normal markets (reduced from 15min)  
-        'VOLATILE': 180,    # 3 minutes during volatile markets (reduced from 5min)
-        'EXTREME': 60,      # 1 minute during extreme volatility
-        'HUNTING': 30       # 30 seconds when hunting opportunities
+        'QUIET': 1800,       # 30 minutes during quiet markets (increased from 15min)
+        'NORMAL': 600,       # 10 minutes during normal markets (increased from 5min)  
+        'VOLATILE': 300,     # 5 minutes during volatile markets (increased from 3min)
+        'EXTREME': 120,      # 2 minutes during extreme volatility (increased from 1min)
+        'HUNTING': 60        # 1 minute when hunting opportunities (increased from 30s)
     },
     'trading_summary': {
         'total_revenue': 0.0,
@@ -1129,18 +1129,27 @@ def detect_market_regime():
         return 'NORMAL'
 
 def detect_breakout_opportunities():
-    """Real-time breakout and momentum opportunity detection"""
+    """Real-time breakout and momentum opportunity detection with rate limiting"""
     try:
         opportunities = []
-        major_pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT"]
+        major_pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT"]  # Restored original 5 symbols
+        
+        # Rate limiting between API calls
+        breakout_delay = 0.3  # 300ms delay between fetch calls
         
         for symbol in major_pairs:
             try:
-                # Get short-term data for breakout detection
-                df_5m = fetch_data(symbol, "5m", 144)  # 12 hours
-                df_1m = fetch_data(symbol, "1m", 60)   # 1 hour
+                # Rate limiting before API calls
+                time.sleep(breakout_delay)
                 
-                if df_5m is None or df_1m is None or len(df_5m) < 50 or len(df_1m) < 30:
+                # Get short-term data for breakout detection (reduced limits)
+                df_5m = fetch_data(symbol, "5m", 100)  # Reduced from 144 to 100
+                
+                time.sleep(breakout_delay)  # Rate limit between calls
+                
+                df_1m = fetch_data(symbol, "1m", 40)   # Reduced from 60 to 40
+                
+                if df_5m is None or df_1m is None or len(df_5m) < 40 or len(df_1m) < 20:  # Reduced minimums
                     continue
                 
                 current_price = df_1m['close'].iloc[-1]
@@ -2068,13 +2077,23 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
         
         return f"Order failed: {str(e)}"
 
-def scan_trading_pairs(base_assets, quote_asset="USDT", min_volume_usdt=1000000):
-    """Smart multi-coin scanner for best trading opportunities"""
+def scan_trading_pairs(base_assets=None, quote_asset="USDT", min_volume_usdt=1000000):
+    """Smart multi-coin scanner for best trading opportunities with rate limiting"""
     opportunities = []
+    
+    # Default assets if none provided
+    if base_assets is None:
+        base_assets = ["BTC", "ETH", "BNB", "XRP", "SOL", "MATIC", "DOT", "ADA", "AVAX", "LINK"]  # Restored original 10 symbols
+    
+    # Add rate limiting to prevent API ban
+    scan_delay = 0.5  # 500ms delay between API calls
     
     for base in base_assets:
         try:
             symbol = f"{base}{quote_asset}"
+            
+            # Rate limiting - wait before each API call
+            time.sleep(scan_delay)
             
             # Get 24h ticker statistics
             ticker = client.get_ticker(symbol=symbol)
@@ -2085,9 +2104,12 @@ def scan_trading_pairs(base_assets, quote_asset="USDT", min_volume_usdt=1000000)
             if volume_usdt < min_volume_usdt:
                 continue
             
-            # Fetch market data
-            df = fetch_data(symbol=symbol, limit=50)  # Smaller dataset for scanning
-            if df is None or len(df) < 20:
+            # Rate limiting before data fetch
+            time.sleep(scan_delay)
+            
+            # Fetch market data with smaller limit to reduce API weight
+            df = fetch_data(symbol=symbol, limit=30)  # Reduced from 50 to 30
+            if df is None or len(df) < 15:  # Reduced minimum from 20 to 15
                 continue
             
             # Calculate technical indicators with proper error handling
@@ -2251,8 +2273,8 @@ def trading_loop():
         print(f"🎯 Scan Reason: STARTUP_SCAN")
         print(f"📊 Market Regime: {bot_status.get('market_regime', 'NORMAL')}")
         
-        # Scan all trading pairs immediately
-        scan_results = scan_trading_pairs()
+        # Scan all trading pairs immediately (restored to original scan)
+        scan_results = scan_trading_pairs()  # Uses default 10 symbols
         bot_status['last_scan_time'] = get_cairo_time()  # Record scan time
         print(f"✅ Startup scan completed - found {len(scan_results) if scan_results else 0} opportunities")
         
@@ -2321,7 +2343,7 @@ def trading_loop():
             if should_full_scan:
                 print("🔍 Performing FULL MARKET SCAN")
                 opportunities = scan_trading_pairs(
-                    base_assets=["BTC", "ETH", "BNB", "XRP", "SOL", "MATIC", "DOT", "ADA", "AVAX", "LINK"],
+                    base_assets=["BTC", "ETH", "BNB", "XRP", "SOL", "MATIC", "DOT", "ADA", "AVAX", "LINK"],  # Restored original 10 symbols
                     quote_asset="USDT",
                     min_volume_usdt=500000  # Lower threshold for more opportunities
                 )
