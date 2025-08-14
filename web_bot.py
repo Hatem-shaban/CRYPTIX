@@ -170,12 +170,20 @@ def load_bot_state():
 def start_watchdog():
     """Start the watchdog monitoring thread"""
     if config.WATCHDOG['enabled']:
+        # Check if watchdog is already running
+        import threading
+        for thread in threading.enumerate():
+            if thread.name == 'watchdog_thread' and thread.is_alive():
+                print("🔍 Watchdog monitor already running")
+                return
+                
         def watchdog_thread():
             while True:
                 watchdog_monitor()
                 time.sleep(config.WATCHDOG['heartbeat_interval'])
         
-        threading.Thread(target=watchdog_thread, daemon=True).start()
+        threading.Thread(target=watchdog_thread, daemon=True, name='watchdog_thread').start()
+        print("🔍 Watchdog monitor started")
 
 # keep_alive()  # Disabled to avoid Flask conflicts
 # Load environment variables
@@ -458,8 +466,8 @@ def get_csv_trade_history(days=30):
             try:
                 # Handle different timestamp formats
                 if 'timestamp' in df.columns:
-                    # Try to parse the timestamp column
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                    # Try to parse the timestamp column, removing timezone info to avoid warnings
+                    df['timestamp'] = pd.to_datetime(df['timestamp'].str.replace(r' [A-Z]{3,4}$', '', regex=True), errors='coerce')
                     
                     # Remove rows where timestamp parsing failed
                     df = df.dropna(subset=['timestamp'])
@@ -2643,6 +2651,14 @@ def auto_start_bot():
             print("Bot is already running")
             return True
             
+        # Check if there's already a trading thread running
+        import threading
+        for thread in threading.enumerate():
+            if thread.name == 'trading_loop_thread' and thread.is_alive():
+                print("Trading thread already exists - updating status")
+                bot_status['running'] = True
+                return True
+            
         print("Auto-starting trading bot...")
         # Use the standard start function to avoid duplication
         start_trading_bot()
@@ -2661,6 +2677,14 @@ def start_trading_bot():
             print("⚠️ Trading bot is already running")
             return
             
+        # Check if there's already a trading thread running
+        import threading
+        for thread in threading.enumerate():
+            if thread.name == 'trading_loop_thread' and thread.is_alive():
+                print("⚠️ Trading thread already exists and is running")
+                bot_status['running'] = True  # Ensure status is consistent
+                return
+            
         # Only initialize client if not already connected
         if not bot_status.get('api_connected', False):
             print("🔧 Initializing API client...")
@@ -2669,8 +2693,8 @@ def start_trading_bot():
                 log_error_to_csv("Failed to initialize API client on start", "CLIENT_ERROR", "start_trading_bot", "ERROR")
                 return
         
-        # Start trading loop in background thread
-        trading_thread = threading.Thread(target=trading_loop, daemon=True)
+        # Start trading loop in background thread with a unique name
+        trading_thread = threading.Thread(target=trading_loop, daemon=True, name='trading_loop_thread')
         trading_thread.start()
         bot_status['running'] = True
         bot_status['status'] = 'running'
@@ -2690,6 +2714,13 @@ def start_trading_bot():
 
 def start_auto_restart_monitor():
     """Monitor bot status and auto-restart if needed"""
+    # Check if monitor is already running
+    import threading
+    for thread in threading.enumerate():
+        if thread.name == 'auto_restart_monitor' and thread.is_alive():
+            print("🔍 Auto-restart monitor already running")
+            return
+            
     def monitor():
         while True:
             try:
@@ -2725,9 +2756,10 @@ def start_auto_restart_monitor():
                 log_error_to_csv(error_msg, "AUTO_RESTART_ERROR", "start_auto_restart_monitor", "ERROR")
                 time.sleep(30)  # Wait longer on error
     
-    # Start monitor in background thread
-    monitor_thread = threading.Thread(target=monitor, daemon=True)
+    # Start monitor in background thread with unique name
+    monitor_thread = threading.Thread(target=monitor, daemon=True, name='auto_restart_monitor')
     monitor_thread.start()
+    print("🔍 Auto-restart monitor started")
     print("🔍 Auto-restart monitor started")
 
 @app.route('/download_logs')
@@ -4387,16 +4419,21 @@ if __name__ == '__main__':
                 print("❌ Failed to initialize API client at startup")
                 exit(1)
         
-        # Start the auto-restart monitor
+        # Start the auto-restart monitor (only once)
         start_auto_restart_monitor()
         
-        # Auto-start the bot if enabled and API is connected
-        if bot_status.get('auto_start', True) and bot_status.get('api_connected', False):
+        # Auto-start the bot if enabled and API is connected (only once on startup)
+        if (bot_status.get('auto_start', True) and 
+            bot_status.get('api_connected', False) and 
+            not bot_status.get('running', False)):
             print("🚀 Auto-starting trading bot...")
             # Use the proper startup function to ensure consistent notifications
             auto_start_bot()
         else:
-            print("⏸️ Auto-start disabled or API not connected")
+            if bot_status.get('running', False):
+                print("🔄 Trading bot already running")
+            else:
+                print("⏸️ Auto-start disabled or API not connected")
         
         # Configure Flask for production
         flask_env = os.getenv('FLASK_ENV', 'development')
