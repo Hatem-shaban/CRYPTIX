@@ -4440,7 +4440,9 @@ if __name__ == '__main__':
             print("🔧 Initializing API client...")
             if not initialize_client():
                 print("❌ Failed to initialize API client at startup")
-                exit(1)
+                print("⚠️  Binance API initialization failed. This may be due to rate limits or a temporary ban. The bot UI will still start, but trading will be disabled until the ban is lifted.")
+                # Do not exit; allow the web UI to start for user awareness
+                # Optionally, you could implement a retry or cooldown here
         
         # Start the auto-restart monitor
         start_auto_restart_monitor()
