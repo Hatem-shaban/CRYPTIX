@@ -535,13 +535,7 @@ bot_status = {
         'average_trade_size': 0.0,
         'win_rate': 0.0,
         'trades_history': []  # Last 10 trades for display
-    },
-    # Risk Management Tracking
-    'consecutive_losses': 0,
-    'daily_loss': 0.0,
-    'can_trade': False,
-    'last_trade_time': None,
-    'trade_count_today': 0
+    }
 }
 
 app = Flask(__name__)
@@ -556,8 +550,6 @@ print("🔧 Loading API credentials...")
 api_key = None
 api_secret = None
 client = None
-# Lock to prevent multiple initializations in multi-threaded scenarios
-client_init_lock = threading.Lock()
 
 # Try multiple methods to get environment variables (important for Render)
 try:
@@ -586,27 +578,6 @@ except Exception as e:
     print("   Will attempt to load during client initialization")
 
 # Lightweight sentiment analysis function
-def reset_daily_tracking():
-    """Reset daily tracking counters - useful for manual intervention"""
-    global bot_status
-    bot_status['daily_loss'] = 0.0
-    bot_status['consecutive_losses'] = 0
-    bot_status['trade_count_today'] = 0
-    print("🔄 Daily tracking counters reset")
-    log_error_to_csv("Daily tracking counters manually reset", "MANUAL_RESET", "reset_daily_tracking", "INFO")
-    return "Daily tracking reset successfully"
-
-def force_enable_trading():
-    """Force enable trading by resetting all risk management blocks"""
-    global bot_status
-    bot_status['consecutive_losses'] = 0
-    bot_status['daily_loss'] = 0.0
-    bot_status['can_trade'] = True
-    bot_status['api_connected'] = True
-    print("🚀 Trading force-enabled - all risk blocks cleared")
-    log_error_to_csv("Trading force-enabled via manual intervention", "MANUAL_ENABLE", "force_enable_trading", "INFO")
-    return "Trading force-enabled successfully"
-
 def get_sentiment_score(text):
     """Enhanced sentiment scoring with crypto-specific keyword weighting"""
     try:
@@ -641,14 +612,13 @@ def get_sentiment_score(text):
 def initialize_client():
     global client, bot_status, api_key, api_secret
     try:
-        # Prevent multiple initializations using a lock
-        with client_init_lock:
-            # Skip if already connected and client exists
-            if client and bot_status.get('api_connected', False):
-                print("✅ API client already connected")
-                return True
-            # Reload environment variables to ensure we have latest values
-            load_dotenv()
+        # Skip if already connected and client exists
+        if client and bot_status.get('api_connected', False):
+            print("✅ API client already connected")
+            return True
+            
+        # Reload environment variables to ensure we have latest values
+        load_dotenv()
         
         # Get API credentials with multiple fallback methods for Render
         api_key = (
@@ -1850,8 +1820,16 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
         if client:
             print("\n=== Balance Check ===")
             balance = client.get_account()
-            usdt_balance = float(next((b['free'] for b in balance['balances'] if b['asset'] == 'USDT'), 0))
-            btc_balance = float(next((b['free'] for b in balance['balances'] if b['asset'] == 'BTC'), 0))
+            
+            # More robust balance extraction
+            usdt_balance = 0
+            btc_balance = 0
+            for b in balance['balances']:
+                if b['asset'] == 'USDT':
+                    usdt_balance = float(b['free'])
+                elif b['asset'] == 'BTC':
+                    btc_balance = float(b['free'])
+            
             print(f"Available USDT balance: {usdt_balance}")
             print(f"Available BTC balance: {btc_balance}")
             
@@ -1911,7 +1889,28 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
         if signal == "BUY":
             print("Processing BUY order...")
             account_info = client.get_account()
-            usdt = float([x['free'] for x in account_info['balances'] if x['asset'] == 'USDT'][0])
+            
+            # Debug: Print all balances to see what we're getting
+            print("=== Account Balances Debug ===")
+            for balance in account_info['balances']:
+                if float(balance['free']) > 0 or balance['asset'] == 'USDT':
+                    print(f"{balance['asset']}: free={balance['free']}, locked={balance['locked']}")
+            
+            # More robust USDT balance extraction
+            usdt_balance = None
+            for balance in account_info['balances']:
+                if balance['asset'] == 'USDT':
+                    usdt_balance = balance
+                    break
+            
+            if usdt_balance is None:
+                print("❌ USDT balance not found in account")
+                trade_info['status'] = 'no_usdt_balance'
+                bot_status['trading_summary']['failed_trades'] += 1
+                log_error_to_csv("USDT balance not found in account", "BALANCE_ERROR", "execute_trade", "ERROR")
+                return "USDT balance not found"
+            
+            usdt = float(usdt_balance['free'])
             print(f"USDT available for buy: {usdt}")
             print(f"Minimum required: 10 USDT")
             print(f"Risk amount would be: {usdt * (config.RISK_PERCENTAGE / 100):.2f} USDT")
@@ -1937,7 +1936,15 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
             print("Processing SELL order...")
             # Extract base asset from symbol (e.g., "BTC" from "BTCUSDT")
             base_asset = symbol[:-4] if symbol.endswith('USDT') else symbol.split(symbol_info['quoteAsset'])[0]
-            base_balance = float([x['free'] for x in client.get_account()['balances'] if x['asset'] == base_asset][0])
+            
+            # More robust balance extraction for sell orders
+            account_info = client.get_account()
+            base_balance = 0
+            for balance in account_info['balances']:
+                if balance['asset'] == base_asset:
+                    base_balance = float(balance['free'])
+                    break
+            
             print(f"{base_asset} available for sell: {base_balance}")
             
             if base_balance < qty:
@@ -1974,8 +1981,14 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
             balance_before = balance_after = 0
             if client:
                 account = client.get_account()
-                usdt_balance = float([x['free'] for x in account['balances'] if x['asset'] == 'USDT'][0])
-                btc_balance = float([x['free'] for x in account['balances'] if x['asset'] == 'BTC'][0])
+                # More robust balance extraction for logging
+                usdt_balance = 0
+                btc_balance = 0
+                for balance in account['balances']:
+                    if balance['asset'] == 'USDT':
+                        usdt_balance = float(balance['free'])
+                    elif balance['asset'] == 'BTC':
+                        btc_balance = float(balance['free'])
                 balance_after = usdt_balance + (btc_balance * trade_info['price'])
             
             additional_data = {
@@ -3192,43 +3205,6 @@ def home():
                 </div>
             </div>
             
-            <!-- Risk Management Status -->
-            <div class="trading-section">
-                <div class="section-title">🛡️ Risk Management</div>
-                <div class="info-item">
-                    <span class="info-label">Can Trade</span>
-                    <span class="info-value" style="color: {{ '#28a745' if status.can_trade else '#dc3545' }}">
-                        {{ '✓ Enabled' if status.can_trade else '✗ Blocked' }}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">API Connected</span>
-                    <span class="info-value" style="color: {{ '#28a745' if status.api_connected else '#dc3545' }}">
-                        {{ '✓ Connected' if status.api_connected else '✗ Disconnected' }}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Consecutive Losses</span>
-                    <span class="info-value" style="color: {{ '#dc3545' if status.consecutive_losses >= 3 else '#28a745' }}">
-                        {{ status.consecutive_losses }}/5
-                    </span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Daily Loss</span>
-                    <span class="info-value" style="color: {{ '#dc3545' if status.daily_loss >= 25 else '#28a745' }}">
-                        ${{ "{:.2f}".format(status.daily_loss) }}/50
-                    </span>
-                </div>
-                <div class="info-item" style="margin-top: 10px;">
-                    <a href="/reset_daily" style="background: #ffc107; color: #000; padding: 5px 10px; text-decoration: none; border-radius: 4px; margin-right: 5px; font-size: 12px;">Reset Daily</a>
-                    <a href="/force_enable" style="background: #28a745; color: #fff; padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 12px;">Force Enable</a>
-                </div>
-                <div class="info-item" style="margin-top: 10px;">
-                    <a href="/test_trade/buy" style="background: #007bff; color: #fff; padding: 5px 10px; text-decoration: none; border-radius: 4px; margin-right: 5px; font-size: 12px;">🧪 Test Buy</a>
-                    <a href="/test_trade/sell" style="background: #dc3545; color: #fff; padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 12px;">🧪 Test Sell</a>
-                </div>
-            </div>
-            
             <!-- Trading Information -->
             <div class="trading-section">
                 <div class="section-title">📊 Trading Status</div>
@@ -3350,12 +3326,6 @@ def stop():
         print(f"Error stopping bot: {e}")
         return f"Error stopping bot: {e}"
 
-@app.route('/reset_daily')
-def reset_daily():
-    """Reset daily risk tracking counters"""
-    reset_daily_tracking()
-    return redirect('/')
-
 @app.route('/force_scan')
 def force_scan():
     """Force an immediate signal scan"""
@@ -3380,31 +3350,6 @@ def force_scan():
     except Exception as e:
         print(f"Error triggering manual scan: {e}")
         return jsonify({'error': f'Failed to trigger scan: {str(e)}'}), 500
-
-@app.route('/force_enable')
-def force_enable():
-    """Force enable trading by clearing all risk management blocks"""
-    force_enable_trading()
-    return redirect('/')
-
-@app.route('/test_trade/<signal>')
-def test_trade(signal):
-    """Test trade execution with current market conditions"""
-    if signal.upper() not in ['BUY', 'SELL']:
-        return redirect('/')
-    
-    if not bot_status.get('api_connected', False):
-        bot_status['errors'].append("Cannot test trade - API not connected")
-        return redirect('/')
-    
-    try:
-        print(f"🧪 Testing {signal.upper()} trade execution...")
-        result = execute_trade(signal.upper(), bot_status.get('current_symbol', 'BTCUSDT'))
-        print(f"🧪 Test result: {result}")
-        return redirect('/')
-    except Exception as e:
-        bot_status['errors'].append(f"Test trade failed: {str(e)}")
-        return redirect('/')
 
 @app.route('/strategy/<name>')
 def set_strategy(name):
@@ -4440,9 +4385,7 @@ if __name__ == '__main__':
             print("🔧 Initializing API client...")
             if not initialize_client():
                 print("❌ Failed to initialize API client at startup")
-                print("⚠️  Binance API initialization failed. This may be due to rate limits or a temporary ban. The bot UI will still start, but trading will be disabled until the ban is lifted.")
-                # Do not exit; allow the web UI to start for user awareness
-                # Optionally, you could implement a retry or cooldown here
+                exit(1)
         
         # Start the auto-restart monitor
         start_auto_restart_monitor()
