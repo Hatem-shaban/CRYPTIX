@@ -366,26 +366,45 @@ def log_trade_to_csv(trade_info, additional_data=None):
 
 # Global signal tracking to prevent duplicates
 last_signals = {}
+last_signal_time = None  # Track when ANY signal was last generated globally
 
 def log_signal_to_csv(signal, price, indicators, reason=""):
-    """Log trading signal to CSV file with duplicate prevention"""
-    global last_signals
+    """Log trading signal to CSV file with enhanced duplicate prevention"""
+    global last_signals, last_signal_time
     try:
         symbol = indicators.get('symbol', 'UNKNOWN')
         current_time = datetime.now()
         
         print(f"🔍 Attempting to log signal: {signal} for {symbol} at ${price:.4f}")  # Debug
         
-        # Simple duplicate prevention - only for same symbol and signal within 30 seconds
-        signal_key = f"{symbol}_{signal}"
-        
-        if signal_key in last_signals:
-            time_diff = (current_time - last_signals[signal_key]).total_seconds()
-            if time_diff < 30:  # 30 seconds cooldown
-                print(f"⚠️ Duplicate signal prevented: {signal} for {symbol} (last logged {time_diff:.1f}s ago)")
+        # GLOBAL rate limiting - prevent ANY signal generation too frequently
+        if last_signal_time is not None:
+            global_time_diff = (current_time - last_signal_time).total_seconds()
+            if global_time_diff < 45:  # Minimum 45 seconds between ANY signals globally
+                print(f"🛑 GLOBAL rate limit: Any signal suppressed (last signal {global_time_diff:.1f}s ago, need 45s gap)")
                 return
         
-        # Update the last signal time
+        # Enhanced duplicate prevention - prevent ANY signal for same symbol within 90 seconds
+        # This prevents rapid-fire signal generation regardless of signal type
+        symbol_key = f"{symbol}"  # Just symbol, not signal type
+        
+        if symbol_key in last_signals:
+            time_diff = (current_time - last_signals[symbol_key]).total_seconds()
+            if time_diff < 90:  # 90 seconds cooldown for ANY signal on this symbol
+                print(f"⚠️ Symbol rate limit: {signal} for {symbol} suppressed (last signal {time_diff:.1f}s ago, need 90s gap)")
+                return
+        
+        # Also check for the specific signal type (additional safety)
+        signal_key = f"{symbol}_{signal}"
+        if signal_key in last_signals:
+            time_diff = (current_time - last_signals[signal_key]).total_seconds()
+            if time_diff < 180:  # 3 minutes cooldown for same signal type
+                print(f"⚠️ Signal type rate limit: {signal} for {symbol} suppressed (same signal {time_diff:.1f}s ago)")
+                return
+        
+        # Update all tracking variables
+        last_signal_time = current_time
+        last_signals[symbol_key] = current_time
         last_signals[signal_key] = current_time
         
         csv_files = setup_csv_logging()
@@ -2470,6 +2489,13 @@ def trading_loop():
     print("📊 Market regime detection online")
     print("⚡ Breakout opportunity scanning active")
     print("📡 Signal scanning activated")
+    print("\n🛡️ === RATE LIMITING ACTIVE ===")
+    print("⏱️ Global signal cooldown: 45 seconds between ANY signals")
+    print("🔒 Symbol signal cooldown: 90 seconds per symbol")
+    print("🚫 Signal type cooldown: 180 seconds for same signal type")
+    print("📊 Scan cycle limit: 1 signal per scanning cycle")
+    print("🕒 BTC fallback cooldown: 60 seconds")
+    print("=" * 50)
     
     # Initialize trading summary if not exists
     if 'trading_summary' not in bot_status:
@@ -2634,8 +2660,9 @@ def trading_loop():
                 print(f"🎯 Found {len(opportunities)} hunting targets")
                 
                 # Process top opportunities with intelligent prioritization
-                max_targets = 2 if bot_status.get('hunting_mode') else 1
+                max_targets = 1  # Limit to 1 target per cycle to prevent signal flooding
                 processed_symbols = set()  # Track processed symbols to avoid duplicates
+                signals_generated_this_cycle = 0  # Track signals in this cycle
                 
                 for i, opportunity in enumerate(opportunities[:max_targets]):
                     current_symbol = opportunity['symbol']
@@ -2646,6 +2673,11 @@ def trading_loop():
                         print(f"⚠️ Skipping {current_symbol} - already processed in this cycle")
                         continue
                     processed_symbols.add(current_symbol)
+                    
+                    # Limit signals per cycle
+                    if signals_generated_this_cycle >= 1:
+                        print(f"🛑 Signal limit reached for this cycle - skipping remaining opportunities")
+                        break
                     
                     print(f"\n🎯 === TARGET {i+1}: {current_symbol} ===")
                     print(f"💪 Score: {current_score:.1f}")
@@ -2659,9 +2691,10 @@ def trading_loop():
                         
                     # Enhanced signal generation with market regime consideration
                     signal = signal_generator(df, current_symbol)
+                    signals_generated_this_cycle += 1  # Track signals generated in this cycle
                     current_price = float(df['close'].iloc[-1])
                     
-                    print(f"🚦 Signal: {signal}")
+                    print(f"🚦 Signal: {signal} (#{signals_generated_this_cycle} this cycle)")
                     print(f"💰 Price: ${current_price:.4f}")
                     
                     if 'rsi' in opportunity:
