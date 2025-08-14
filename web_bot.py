@@ -376,26 +376,17 @@ def log_signal_to_csv(signal, price, indicators, reason=""):
         
         print(f"🔍 Attempting to log signal: {signal} for {symbol} at ${price:.4f}")  # Debug
         
-        # Temporarily disable duplicate prevention for debugging
-        # Create a unique key for this signal (less strict - only symbol and signal)
-        # signal_key = f"{symbol}_{signal}"
+        # Simple duplicate prevention - only for same symbol and signal within 30 seconds
+        signal_key = f"{symbol}_{signal}"
         
-        # Different time limits for different signal types
-        # time_limit = 60 if signal == "HOLD" else 15  # 60 seconds for HOLD, 15 for BUY/SELL
-        
-        # Check if we've logged this signal recently
-        # if signal_key in last_signals:
-        #     time_diff = (current_time - last_signals[signal_key]).total_seconds()
-        #     if time_diff < time_limit:
-        #         print(f"⚠️ Duplicate signal prevented: {signal} for {symbol} (last logged {time_diff:.1f}s ago)")
-        #         return
+        if signal_key in last_signals:
+            time_diff = (current_time - last_signals[signal_key]).total_seconds()
+            if time_diff < 30:  # 30 seconds cooldown
+                print(f"⚠️ Duplicate signal prevented: {signal} for {symbol} (last logged {time_diff:.1f}s ago)")
+                return
         
         # Update the last signal time
-        # last_signals[signal_key] = current_time
-        
-        # Clean up old entries to prevent memory buildup (keep only last hour)
-        # cutoff_time = current_time - timedelta(hours=1)
-        # last_signals = {k: v for k, v in last_signals.items() if v > cutoff_time}
+        last_signals[signal_key] = current_time
         
         csv_files = setup_csv_logging()
         
