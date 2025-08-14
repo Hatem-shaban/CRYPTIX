@@ -13,3 +13,5 @@ timestamp,cairo_time,error_type,error_message,function_name,severity,bot_status
 2025-08-13T15:01:31.381435,2025-08-13 18:01:31 EEST,BALANCE_ERROR,Insufficient BTC for sell order,execute_trade,WARNING,True
 2025-08-13T15:06:43.180501,2025-08-13 18:06:43 EEST,BALANCE_ERROR,Insufficient BTC for sell order,execute_trade,WARNING,True
 2025-08-13T15:07:27.490679,2025-08-13 18:07:27 EEST,STRATEGY_CHANGE,Strategy changed from MODERATE to STRICT,set_strategy,INFO,True
+2025-08-14T09:55:53.601932,2025-08-14 12:55:53 EEST,API_ERROR,APIError(code=-1013): Filter failure: NOTIONAL,execute_trade,ERROR,True
+2025-08-14T10:18:48.033332,2025-08-14 13:18:48 EEST,API_ERROR,APIError(code=-1013): Filter failure: NOTIONAL,execute_trade,ERROR,True
