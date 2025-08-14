@@ -1643,6 +1643,135 @@ def adaptive_strategy(df, symbol, indicators):
     
     return "HOLD", f"Neutral conditions (Score: {score:.0f}, Threshold: ±{score_threshold})"
 
+def get_account_balances_summary():
+    """Get a summary of all non-zero account balances"""
+    try:
+        if not client:
+            return {"error": "Client not initialized"}
+        
+        account_info = client.get_account()
+        balances = {}
+        total_usdt_value = 0
+        
+        print("\n💰 Account Balance Summary:")
+        print("=" * 40)
+        
+        for balance in account_info['balances']:
+            free_balance = float(balance['free'])
+            locked_balance = float(balance['locked'])
+            total_balance = free_balance + locked_balance
+            
+            if total_balance > 0:
+                asset = balance['asset']
+                balances[asset] = {
+                    'free': free_balance,
+                    'locked': locked_balance,
+                    'total': total_balance
+                }
+                
+                # Try to get USDT value for major coins
+                usdt_value = 0
+                if asset == 'USDT':
+                    usdt_value = total_balance
+                elif asset in ['BTC', 'ETH', 'BNB']:
+                    try:
+                        ticker = client.get_ticker(symbol=f"{asset}USDT")
+                        price = float(ticker['lastPrice'])
+                        usdt_value = total_balance * price
+                    except:
+                        usdt_value = 0  # Skip if price fetch fails
+                
+                total_usdt_value += usdt_value
+                
+                print(f"{asset:>8}: {free_balance:>12.8f} free, {locked_balance:>12.8f} locked "
+                      f"(~${usdt_value:>8.2f})")
+        
+        print("=" * 40)
+        print(f"{'TOTAL':>8}: ~${total_usdt_value:>8.2f} USDT value")
+        print()
+        
+        return {
+            'balances': balances,
+            'total_usdt_value': total_usdt_value,
+            'timestamp': format_cairo_time()
+        }
+        
+    except Exception as e:
+        error_msg = f"Error getting balance summary: {e}"
+        print(f"❌ {error_msg}")
+        log_error_to_csv(error_msg, "BALANCE_SUMMARY_ERROR", "get_account_balances_summary", "ERROR")
+        return {"error": error_msg}
+
+def check_coin_balance(symbol):
+    """Check if we have sufficient balance to place a SELL order for the given symbol"""
+    try:
+        if not client:
+            print(f"⚠️ Client not initialized - cannot check balance for {symbol}")
+            return False, 0, "Client not initialized"
+        
+        # Extract base asset from symbol (e.g., "BTC" from "BTCUSDT")
+        if symbol.endswith('USDT'):
+            base_asset = symbol[:-4]  # Remove "USDT"
+        elif symbol.endswith('BUSD'):
+            base_asset = symbol[:-4]  # Remove "BUSD" 
+        else:
+            # For other quote currencies, try to find the quote asset
+            try:
+                exchange_info = client.get_exchange_info()
+                symbol_info = next((s for s in exchange_info['symbols'] if s['symbol'] == symbol), None)
+                if symbol_info:
+                    base_asset = symbol_info['baseAsset']
+                else:
+                    print(f"⚠️ Cannot determine base asset for {symbol}")
+                    return False, 0, "Unknown symbol format"
+            except Exception as e:
+                print(f"⚠️ Error getting symbol info for {symbol}: {e}")
+                return False, 0, f"Symbol info error: {e}"
+        
+        print(f"🔍 Checking {base_asset} balance for potential sell order...")
+        
+        # Get account balances
+        account_info = client.get_account()
+        asset_balance = 0
+        
+        for balance in account_info['balances']:
+            if balance['asset'] == base_asset:
+                asset_balance = float(balance['free'])
+                break
+        
+        print(f"💰 Available {base_asset} balance: {asset_balance}")
+        
+        # Get minimum quantity requirements
+        min_sellable_qty = 0.001  # Default minimum
+        try:
+            exchange_info = client.get_exchange_info()
+            symbol_info = next((s for s in exchange_info['symbols'] if s['symbol'] == symbol), None)
+            if symbol_info:
+                lot_size_filter = next((f for f in symbol_info['filters'] if f['filterType'] == 'LOT_SIZE'), None)
+                if lot_size_filter:
+                    min_sellable_qty = float(lot_size_filter['minQty'])
+        except Exception as e:
+            print(f"⚠️ Warning: Could not get minimum quantity for {symbol}: {e}")
+        
+        # Check if we have enough balance to place a meaningful sell order
+        has_sufficient_balance = asset_balance >= min_sellable_qty
+        
+        print(f"📊 Balance check result:")
+        print(f"   Available: {asset_balance} {base_asset}")
+        print(f"   Minimum required: {min_sellable_qty} {base_asset}")
+        print(f"   Can sell: {'✅ Yes' if has_sufficient_balance else '❌ No'}")
+        
+        if has_sufficient_balance:
+            return True, asset_balance, f"Sufficient balance: {asset_balance} {base_asset}"
+        else:
+            return False, asset_balance, f"Insufficient balance: {asset_balance} < {min_sellable_qty} {base_asset}"
+            
+    except Exception as e:
+        error_msg = f"Error checking balance for {symbol}: {e}"
+        print(f"❌ {error_msg}")
+        log_error_to_csv(error_msg, "BALANCE_CHECK_ERROR", "check_coin_balance", "ERROR")
+        return False, 0, error_msg
+
 def signal_generator(df, symbol="BTCUSDT"):
     print("\n=== Generating Trading Signal ===")  # Debug log
     if df is None or len(df) < 30:
@@ -1774,7 +1903,39 @@ def signal_generator(df, symbol="BTCUSDT"):
             
         print(f"Strategy {strategy} generated signal: {signal} - {reason}")  # Debug log
         
-        # Log strategy decision to signals log instead of error log
+        # IMPORTANT: Check balance before allowing SELL signals
+        if signal == "SELL":
+            print(f"\n🔍 Checking if we have {symbol} balance for SELL order...")
+            has_balance, available_balance, balance_msg = check_coin_balance(symbol)
+            
+            if not has_balance:
+                print(f"❌ Cannot place SELL order: {balance_msg}")
+                signal = "HOLD"
+                reason = f"No balance to sell - {balance_msg}"
+                print(f"🔄 Signal changed from SELL to HOLD due to insufficient balance")
+                
+                # Log the balance-prevented sell signal
+                log_signal_to_csv(
+                    "HOLD",
+                    current_price,
+                    indicators,
+                    f"Strategy {strategy} wanted SELL but {balance_msg}"
+                )
+                
+                # Send Telegram notification about blocked sell signal
+                if TELEGRAM_AVAILABLE:
+                    try:
+                        notify_signal("HOLD", symbol, current_price, indicators, 
+                                    f"SELL blocked - {balance_msg}")
+                    except Exception as telegram_error:
+                        print(f"Telegram balance notification failed: {telegram_error}")
+                
+                return signal
+            else:
+                print(f"✅ Balance check passed: {balance_msg}")
+                # Continue with original SELL signal
+        
+        # Log strategy decision to signals log
         log_signal_to_csv(
             signal,
             current_price,
@@ -1984,32 +2145,51 @@ def execute_trade(signal, symbol="BTCUSDT", qty=None):
             
         elif signal == "SELL":
             print("Processing SELL order...")
+            
+            # Double-check balance before executing (additional safety)
+            has_balance, available_balance, balance_msg = check_coin_balance(symbol)
+            
+            if not has_balance:
+                print(f"❌ Final balance check failed: {balance_msg}")
+                trade_info['status'] = 'insufficient_funds'
+                trade_info['error'] = balance_msg
+                bot_status['trading_summary']['failed_trades'] += 1
+                log_error_to_csv(f"SELL order blocked by final balance check: {balance_msg}", 
+                               "BALANCE_ERROR", "execute_trade", "WARNING")
+                return f"SELL order blocked: {balance_msg}"
+            
             # Extract base asset from symbol (e.g., "BTC" from "BTCUSDT")
             base_asset = symbol[:-4] if symbol.endswith('USDT') else symbol.split(symbol_info['quoteAsset'])[0]
             
-            # More robust balance extraction for sell orders
-            account_info = client.get_account()
-            base_balance = 0
-            for balance in account_info['balances']:
-                if balance['asset'] == base_asset:
-                    base_balance = float(balance['free'])
-                    break
+            print(f"✅ Final balance check passed. Proceeding with SELL order...")
+            print(f"Available {base_asset} balance: {available_balance}")
+            print(f"Requested quantity: {qty}")
             
-            print(f"{base_asset} available for sell: {base_balance}")
+            # Adjust quantity if needed to not exceed available balance
+            if qty > available_balance:
+                print(f"⚠️ Adjusting quantity from {qty} to {available_balance} (max available)")
+                qty = available_balance
+                trade_info['quantity'] = qty
             
-            if base_balance < qty:
-                print(f"Insufficient {base_asset} balance (have: {base_balance}, need: {qty})")
-                trade_info['status'] = 'insufficient_funds'
+            # Final quantity check with minimum requirements
+            if qty <= 0:
+                print("❌ Quantity is zero or negative after adjustments")
+                trade_info['status'] = 'insufficient_quantity'
                 bot_status['trading_summary']['failed_trades'] += 1
-                log_error_to_csv(f"Insufficient {base_asset} for sell order", "BALANCE_ERROR", "execute_trade", "WARNING")
-                return f"Insufficient {base_asset}"
+                return "Cannot place SELL order: quantity too small"
             
-            print(f"Placing market sell order: {qty} {base_asset}")
+            print(f"🚀 Placing market sell order: {qty} {base_asset}")
             order = client.order_market_sell(symbol=symbol, quantity=qty)
             trade_info['price'] = float(order['fills'][0]['price']) if order['fills'] else 0
             trade_info['value'] = float(order['cummulativeQuoteQty'])
             trade_info['fee'] = sum([float(fill['commission']) for fill in order['fills']])
             trade_info['status'] = 'success'
+            
+            print(f"✅ SELL order executed successfully!")
+            print(f"   Order ID: {order.get('orderId', 'N/A')}")
+            print(f"   Price: ${trade_info['price']:.4f}")
+            print(f"   Value: ${trade_info['value']:.2f}")
+            print(f"   Fee: ${trade_info['fee']:.4f}")
             
             # Update trading summary
             bot_status['trading_summary']['total_sell_volume'] += trade_info['value']
@@ -2184,23 +2364,35 @@ def scan_trading_pairs(base_assets=None, quote_asset="USDT", min_volume_usdt=100
             opportunity_score = 0
             signals = []
             
-            # RSI scoring with bounds checking
-            if current_rsi < 30:  # Oversold
+            # Check if we have balance for this coin (for potential sell signals)
+            has_balance, available_balance, balance_msg = check_coin_balance(symbol)
+            can_sell = has_balance and available_balance > 0
+            
+            # RSI scoring with balance-aware adjustments
+            if current_rsi < 30:  # Oversold - good for buying
                 opportunity_score += 30
                 signals.append("RSI_OVERSOLD")
-            elif current_rsi > 70:  # Overbought
-                opportunity_score += 20
-                signals.append("RSI_OVERBOUGHT")
+            elif current_rsi > 70:  # Overbought - good for selling if we have balance
+                if can_sell:
+                    opportunity_score += 25  # Higher score if we can actually sell
+                    signals.append("RSI_OVERBOUGHT_SELLABLE")
+                else:
+                    opportunity_score += 5  # Lower score if we can't sell
+                    signals.append("RSI_OVERBOUGHT_NO_BALANCE")
             elif 45 <= current_rsi <= 55:  # Neutral zone
                 opportunity_score += 10
                 signals.append("RSI_NEUTRAL")
             
-            # MACD scoring
+            # MACD scoring with balance awareness
             if macd_trend == "BULLISH":
                 opportunity_score += 20
                 signals.append("MACD_BULLISH")
             elif macd_trend == "BEARISH":
-                signals.append("MACD_BEARISH")
+                if can_sell:
+                    opportunity_score += 15  # Bearish trend good for selling if we have balance
+                    signals.append("MACD_BEARISH_SELLABLE")
+                else:
+                    signals.append("MACD_BEARISH_NO_BALANCE")
             
             # Price momentum scoring
             if abs(price_change_pct) > 5:  # High volatility
@@ -2212,13 +2404,24 @@ def scan_trading_pairs(base_assets=None, quote_asset="USDT", min_volume_usdt=100
                 opportunity_score += 15
                 signals.append("HIGH_VOLUME")
             
-            # SMA trend scoring with bounds checking
+            # SMA trend scoring with balance considerations
             if current_price > sma_fast_value > sma_slow_value:
                 opportunity_score += 10
                 signals.append("UPTREND")
             elif current_price < sma_fast_value < sma_slow_value:
-                opportunity_score += 10
-                signals.append("DOWNTREND")
+                if can_sell:
+                    opportunity_score += 15  # Downtrend good for selling if we have balance
+                    signals.append("DOWNTREND_SELLABLE")
+                else:
+                    opportunity_score += 5  # Lower score if we can't sell
+                    signals.append("DOWNTREND_NO_BALANCE")
+            
+            # Add balance information to the opportunity
+            balance_info = {
+                'has_balance': can_sell,
+                'available_balance': available_balance if has_balance else 0,
+                'balance_msg': balance_msg
+            }
             
             opportunities.append({
                 'symbol': symbol,
@@ -2229,6 +2432,7 @@ def scan_trading_pairs(base_assets=None, quote_asset="USDT", min_volume_usdt=100
                 'rsi': current_rsi,
                 'macd_trend': macd_trend,
                 'signals': signals,
+                'balance_info': balance_info,  # Add balance information
                 'data': df  # Include data for immediate analysis if selected
             })
             
@@ -2240,12 +2444,16 @@ def scan_trading_pairs(base_assets=None, quote_asset="USDT", min_volume_usdt=100
     # Sort by opportunity score (highest first)
     opportunities.sort(key=lambda x: x['score'], reverse=True)
     
-    # Log top opportunities
+    # Log top opportunities with balance information
     if opportunities:
         print(f"\n=== Top Trading Opportunities ===")
         for i, opp in enumerate(opportunities[:5]):  # Show top 5
+            balance_status = "✅" if opp['balance_info']['has_balance'] else "❌"
+            balance_amount = f"{opp['balance_info']['available_balance']:.4f}" if opp['balance_info']['has_balance'] else "0"
+            
             print(f"{i+1}. {opp['symbol']}: Score {opp['score']}, RSI {opp['rsi']:.1f}, "
-                  f"Change {opp['price_change_pct']:.2f}%, Signals: {', '.join(opp['signals'])}")
+                  f"Change {opp['price_change_pct']:.2f}%, Balance: {balance_status}({balance_amount}), "
+                  f"Signals: {', '.join(opp['signals'])}")
     
     return opportunities
 
@@ -3523,6 +3731,15 @@ def toggle_autostart(action):
 def api_status():
     """JSON API endpoint for bot status"""
     return jsonify(bot_status)
+
+@app.route('/api/balances')
+def api_balances():
+    """JSON API endpoint for account balances"""
+    try:
+        balance_summary = get_account_balances_summary()
+        return jsonify(balance_summary)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/logs')
 def view_logs():
