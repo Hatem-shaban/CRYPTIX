@@ -214,10 +214,29 @@ def log_trade_to_csv(trade_info, additional_data=None):
             additional_data.get('profit_loss', 0) if additional_data else 0
         ]
         
-        # Write to CSV
-        with open(csv_files['trades'], 'a', newline='', encoding='utf-8') as f:
+        # Write to CSV with most recent at top
+        import tempfile
+        temp_file = csv_files['trades'].with_suffix('.tmp')
+        
+        # Read existing data
+        existing_data = []
+        if csv_files['trades'].exists():
+            with open(csv_files['trades'], 'r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                existing_data = list(reader)
+        
+        # Write new data at top
+        with open(temp_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(trade_data)
+            if existing_data and existing_data[0]:  # Write header if exists
+                writer.writerow(existing_data[0])
+                writer.writerow(trade_data)  # New entry at top
+                writer.writerows(existing_data[1:])  # Rest of data
+            else:
+                writer.writerow(trade_data)
+        
+        # Replace original file
+        temp_file.replace(csv_files['trades'])
             
         print(f"Trade logged to CSV: {trade_info.get('signal', 'UNKNOWN')} at {trade_info.get('price', 0)}")
         
@@ -339,9 +358,29 @@ def log_error_to_csv(error_message, error_type="GENERAL", function_name="", seve
             bot_status.get('running', False)
         ]
         
-        with open(csv_files['errors'], 'a', newline='', encoding='utf-8') as f:
+        # Write to CSV with most recent at top
+        import tempfile
+        temp_file = csv_files['errors'].with_suffix('.tmp')
+        
+        # Read existing data
+        existing_data = []
+        if csv_files['errors'].exists():
+            with open(csv_files['errors'], 'r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                existing_data = list(reader)
+        
+        # Write new data at top
+        with open(temp_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(error_data)
+            if existing_data and existing_data[0]:  # Write header if exists
+                writer.writerow(existing_data[0])
+                writer.writerow(error_data)  # New entry at top
+                writer.writerows(existing_data[1:])  # Rest of data
+            else:
+                writer.writerow(error_data)
+        
+        # Replace original file
+        temp_file.replace(csv_files['errors'])
             
         print(f"Error logged to CSV: {error_type} - {error_message}")
         

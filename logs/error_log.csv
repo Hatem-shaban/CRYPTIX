@@ -1,5 +1,4 @@
 timestamp,cairo_time,error_type,error_message,function_name,severity,bot_status
-﻿timestamp,cairo_time,error_type,error_message,function_name,severity,bot_status
 2025-08-13T13:38:00.714560,2025-08-13 16:38:00 EEST,STRATEGY_CHANGE,Strategy changed from ADAPTIVE to MODERATE,set_strategy,INFO,FALSE
 2025-08-13T14:06:06.178060,2025-08-13 17:06:06 EEST,RISK_WARNING,Consecutive losses: 3,update_trade_tracking,WARNING,TRUE
 2025-08-13T14:45:55.094048,2025-08-13 17:45:55 EEST,BALANCE_ERROR,Insufficient DOT for sell order,execute_trade,WARNING,TRUE
