@@ -107,18 +107,6 @@ API_RATE_LIMITS = {
     'weight_per_minute': 6000  # Weight-based limiting
 }
 
-# Watchdog Settings
-WATCHDOG = {
-    'enabled': True,
-    'max_errors': 5,           # Maximum consecutive errors before restart
-    'error_reset_time': 300,   # Time in seconds to reset error counter
-    'heartbeat_interval': 60,  # Time in seconds between health checks
-    'restart_delay': 30,       # Time in seconds to wait before restart
-    'max_memory_percent': 80,  # Maximum memory usage before restart
-    'max_restarts': 3,         # Maximum number of restarts per day
-    'restart_window': 86400    # Time window for restart count (24 hours in seconds)
-}
-
 # Telegram Notification Settings
 TELEGRAM = {
     'enabled': True,  # Enable/disable Telegram notifications

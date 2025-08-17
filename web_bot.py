@@ -50,150 +50,10 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "psutil"])
     import psutil
 
-# Initialize watchdog state
-watchdog_state = {
-    'error_count': 0,
-    'last_error_time': None,
-    'last_heartbeat': None,
-    'restart_count': 0,
-    'last_restart_time': datetime.now(),
-    'process': psutil.Process()
-}
+# Watchdog and auto-restart functionality has been removed
 
-def check_memory_usage():
-    """Check if memory usage is within acceptable limits"""
-    try:
-        memory_percent = watchdog_state['process'].memory_percent()
-        return memory_percent < config.WATCHDOG['max_memory_percent']
-    except Exception as e:
-        log_error_to_csv(str(e), "WATCHDOG", "check_memory_usage", "WARNING")
-        return True  # Default to true if check fails
-
-def can_restart():
-    """Check if the bot can restart based on configured limits"""
-    if not watchdog_state['last_restart_time']:
-        return True
-        
-    time_since_last = (datetime.now() - watchdog_state['last_restart_time']).total_seconds()
-    
-    # Reset counter if outside window
-    if time_since_last > config.WATCHDOG['restart_window']:
-        watchdog_state['restart_count'] = 0
-        watchdog_state['last_restart_time'] = datetime.now()
-        return True
-        
-    return watchdog_state['restart_count'] < config.WATCHDOG['max_restarts']
-
-def restart_bot():
-    """Restart the bot process"""
-    try:
-        if can_restart():
-            log_error_to_csv("Bot restart initiated", "WATCHDOG", "restart_bot", "INFO")
-            watchdog_state['restart_count'] += 1
-            watchdog_state['last_restart_time'] = datetime.now()
-            
-            # Save current state if needed
-            save_bot_state()
-            
-            # Wait specified delay before restart
-            time.sleep(config.WATCHDOG['restart_delay'])
-            
-            # Restart the process
-            python = sys.executable
-            os.execl(python, python, *sys.argv)
-        else:
-            log_error_to_csv("Max restarts exceeded, manual intervention required", "WATCHDOG", "restart_bot", "ERROR")
-    except Exception as e:
-        log_error_to_csv(f"Restart failed: {str(e)}", "WATCHDOG", "restart_bot", "ERROR")
-
-def watchdog_monitor():
-    """Main watchdog monitoring function"""
-    if not config.WATCHDOG['enabled']:
-        return
-        
-    try:
-        current_time = datetime.now()
-        
-        # Check error count
-        if watchdog_state['error_count'] >= config.WATCHDOG['max_errors']:
-            if (current_time - watchdog_state['last_error_time']).total_seconds() < config.WATCHDOG['error_reset_time']:
-                log_error_to_csv("Too many consecutive errors", "WATCHDOG", "watchdog_monitor", "ERROR")
-                restart_bot()
-            else:
-                # Reset error count if outside time window
-                watchdog_state['error_count'] = 0
-        
-        # Check memory usage
-        if not check_memory_usage():
-            log_error_to_csv("Memory usage exceeded threshold", "WATCHDOG", "watchdog_monitor", "WARNING")
-            restart_bot()
-        
-        # Update heartbeat
-        watchdog_state['last_heartbeat'] = current_time
-        
-    except Exception as e:
-        log_error_to_csv(str(e), "WATCHDOG", "watchdog_monitor", "ERROR")
-
-def save_bot_state():
-    """Save critical bot state before restart"""
-    try:
-        state_data = {
-            'bot_status': bot_status,
-            'trading_summary': bot_status['trading_summary'],
-            'last_trades': bot_status['trading_summary']['trades_history']
-        }
-        
-        # Save to temporary file
-        with open('bot_state.tmp', 'w') as f:
-            json.dump(state_data, f)
-    except Exception as e:
-        log_error_to_csv(f"Failed to save state: {str(e)}", "WATCHDOG", "save_bot_state", "WARNING")
-
-def load_bot_state():
-    """Load bot state after restart"""
-    try:
-        if os.path.exists('bot_state.tmp'):
-            with open('bot_state.tmp', 'r') as f:
-                state_data = json.load(f)
-                
-            # Restore critical state
-            bot_status.update(state_data['bot_status'])
-            bot_status['trading_summary'] = state_data['trading_summary']
-            bot_status['trading_summary']['trades_history'] = state_data['last_trades']
-            
-            # Clean up
-            os.remove('bot_state.tmp')
-    except Exception as e:
-        log_error_to_csv(f"Failed to load state: {str(e)}", "WATCHDOG", "load_bot_state", "WARNING")
-
-# Start watchdog thread
-def start_watchdog():
-    """Start the watchdog monitoring thread"""
-    if config.WATCHDOG['enabled']:
-        # Check if watchdog is already running
-        import threading
-        for thread in threading.enumerate():
-            if thread.name == 'watchdog_thread' and thread.is_alive():
-                print("🔍 Watchdog monitor already running")
-                return
-                
-        def watchdog_thread():
-            while True:
-                watchdog_monitor()
-                time.sleep(config.WATCHDOG['heartbeat_interval'])
-        
-        threading.Thread(target=watchdog_thread, daemon=True, name='watchdog_thread').start()
-        print("🔍 Watchdog monitor started")
-
-# keep_alive()  # Disabled to avoid Flask conflicts
 # Load environment variables
 load_dotenv()
-
-# Load previous state if exists
-load_bot_state()
-
-# Start watchdog monitoring
-start_watchdog()
 
 # Cairo timezone
 CAIRO_TZ = pytz.timezone('Africa/Cairo')
@@ -550,8 +410,6 @@ def get_csv_trade_history(days=30):
 bot_status = {
     'running': False,
     'signal_scanning_active': False,  # Track signal scanning status
-    'auto_start': True,  # Enable auto-start by default
-    'auto_restart': True,  # Enable auto-restart on failures
     'last_signal': 'UNKNOWN',
     'last_scan_time': None,  # Track when last scan occurred
     'current_symbol': 'BTCUSDT',  # Track currently analyzed symbol
@@ -2945,7 +2803,6 @@ def stop_trading_bot():
     bot_status['running'] = False
     bot_status['signal_scanning_active'] = False  # Deactivate signal scanning
     bot_status['next_signal_time'] = None  # Clear next signal time when stopped
-    bot_status['last_stop_reason'] = 'manual'  # Track stop reason for auto-restart logic
     
     # Send Telegram notification for bot stop
     if TELEGRAM_AVAILABLE:
@@ -2953,36 +2810,6 @@ def stop_trading_bot():
             notify_bot_status("STOPPED", "Manually stopped by user")
         except Exception as telegram_error:
             print(f"Telegram bot stop notification failed: {telegram_error}")
-
-def auto_start_bot():
-    """Automatically start the bot if auto-start is enabled and conditions are met"""
-    try:
-        if not bot_status.get('auto_start', True):
-            print("Auto-start is disabled")
-            return False
-            
-        if bot_status.get('running', False):
-            print("Bot is already running")
-            return True
-            
-        # Check if there's already a trading thread running
-        import threading
-        for thread in threading.enumerate():
-            if thread.name == 'trading_loop_thread' and thread.is_alive():
-                print("Trading thread already exists - updating status")
-                bot_status['running'] = True
-                return True
-            
-        print("Auto-starting trading bot...")
-        # Use the standard start function to avoid duplication
-        start_trading_bot()
-        return bot_status.get('running', False)
-            
-    except Exception as e:
-        error_msg = f"Auto-start failed: {str(e)}"
-        print(error_msg)
-        log_error_to_csv(error_msg, "AUTO_START_ERROR", "auto_start_bot", "ERROR")
-        return False
 
 def start_trading_bot():
     """Start the trading bot in a separate thread"""
@@ -3025,56 +2852,6 @@ def start_trading_bot():
     except Exception as e:
         print(f"❌ Failed to start trading bot: {e}")
         log_error_to_csv(str(e), "START_ERROR", "start_trading_bot", "ERROR")
-
-def start_auto_restart_monitor():
-    """Monitor bot status and auto-restart if needed"""
-    # Check if monitor is already running
-    import threading
-    for thread in threading.enumerate():
-        if thread.name == 'auto_restart_monitor' and thread.is_alive():
-            print("🔍 Auto-restart monitor already running")
-            return
-            
-    def monitor():
-        while True:
-            try:
-                time.sleep(60)  # Check every minute
-                
-                if not bot_status.get('auto_restart', True):
-                    continue
-                    
-                # Check if bot should be running but isn't
-                # Don't restart if it was manually stopped
-                last_stop_reason = bot_status.get('last_stop_reason', 'unknown')
-                if (bot_status.get('auto_start', True) and 
-                    not bot_status.get('running', False) and 
-                    bot_status.get('api_connected', False) and
-                    last_stop_reason != 'manual'):
-                    
-                    print("🔄 Bot appears to have stopped unexpectedly, attempting auto-restart...")
-                    log_error_to_csv("Bot stopped unexpectedly - attempting auto-restart", 
-                                    "AUTO_RESTART", "start_auto_restart_monitor", "WARNING")
-                    
-                    # Wait a moment before restart
-                    time.sleep(5)
-                    
-                    if auto_start_bot():
-                        print("✅ Bot successfully auto-restarted")
-                        bot_status['last_stop_reason'] = 'restarted'
-                    else:
-                        print("❌ Auto-restart failed")
-                        
-            except Exception as e:
-                error_msg = f"Auto-restart monitor error: {str(e)}"
-                print(error_msg)
-                log_error_to_csv(error_msg, "AUTO_RESTART_ERROR", "start_auto_restart_monitor", "ERROR")
-                time.sleep(30)  # Wait longer on error
-    
-    # Start monitor in background thread with unique name
-    monitor_thread = threading.Thread(target=monitor, daemon=True, name='auto_restart_monitor')
-    monitor_thread.start()
-    print("🔍 Auto-restart monitor started")
-    print("🔍 Auto-restart monitor started")
 
 @app.route('/download_logs')
 def download_logs():
@@ -3606,14 +3383,6 @@ def home():
             </div>
             
             <div style="margin-bottom: 15px;">
-                {% if status.auto_start %}
-                    <a href="/autostart/disable" class="btn btn-warning" style="width: 100%; display: block;">🔄 Disable Auto-Start</a>
-                {% else %}
-                    <a href="/autostart/enable" class="btn btn-secondary" style="width: 100%; display: block;">🔄 Enable Auto-Start</a>
-                {% endif %}
-            </div>
-            
-            <div>
                 <a href="/logs" class="btn btn-secondary" style="width: 100%; display: block;">📋 View Logs</a>
             </div>
         </div>
@@ -3733,31 +3502,6 @@ def set_strategy(name):
         error_msg = f"Error changing strategy: {str(e)}"
         log_error_to_csv(error_msg, "STRATEGY_ERROR", "set_strategy", "ERROR")
         print(error_msg)
-        return error_msg, 500
-
-@app.route('/autostart/<action>')
-def toggle_autostart(action):
-    """Enable/disable auto-start functionality"""
-    try:
-        if action.lower() == 'enable':
-            bot_status['auto_start'] = True
-            bot_status['auto_restart'] = True
-            message = "Auto-start and auto-restart enabled"
-            print(message)
-            log_error_to_csv(message, "CONFIG_CHANGE", "toggle_autostart", "INFO")
-        elif action.lower() == 'disable':
-            bot_status['auto_start'] = False
-            bot_status['auto_restart'] = False
-            message = "Auto-start and auto-restart disabled"
-            print(message)
-            log_error_to_csv(message, "CONFIG_CHANGE", "toggle_autostart", "INFO")
-        else:
-            return "Invalid action. Use 'enable' or 'disable'", 400
-            
-        return redirect('/')
-    except Exception as e:
-        error_msg = f"Error toggling auto-start: {str(e)}"
-        log_error_to_csv(error_msg, "CONFIG_ERROR", "toggle_autostart", "ERROR")
         return error_msg, 500
 
 @app.route('/api/status')
@@ -4733,7 +4477,7 @@ if __name__ == '__main__':
     print("\n🚀 Starting CRYPTIX AI Trading Bot...")
     print("=" * 50)
     
-    # Initialize auto-start and monitoring systems
+    # Initialize bot systems
     try:
         # Initialize API client once at startup
         if not bot_status.get('api_connected', False):
@@ -4741,22 +4485,6 @@ if __name__ == '__main__':
             if not initialize_client():
                 print("❌ Failed to initialize API client at startup")
                 exit(1)
-        
-        # Start the auto-restart monitor (only once)
-        start_auto_restart_monitor()
-        
-        # Auto-start the bot if enabled and API is connected (only once on startup)
-        if (bot_status.get('auto_start', True) and 
-            bot_status.get('api_connected', False) and 
-            not bot_status.get('running', False)):
-            print("🚀 Auto-starting trading bot...")
-            # Use the proper startup function to ensure consistent notifications
-            auto_start_bot()
-        else:
-            if bot_status.get('running', False):
-                print("🔄 Trading bot already running")
-            else:
-                print("⏸️ Auto-start disabled or API not connected")
         
         # Configure Flask for production
         flask_env = os.getenv('FLASK_ENV', 'development')
