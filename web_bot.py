@@ -1851,6 +1851,49 @@ def signal_generator(df, symbol="BTCUSDT"):
                 print(f"✅ Balance check passed: {balance_msg}")
                 # Continue with original SELL signal
         
+        # IMPORTANT: Check USDT balance before allowing BUY signals
+        if signal == "BUY":
+            try:
+                if client:
+                    account_info = client.get_account()
+                    usdt_balance = 0
+                    for balance in account_info['balances']:
+                        if balance['asset'] == 'USDT':
+                            usdt_balance = float(balance['free'])
+                            break
+                    
+                    min_usdt_required = 10.0  # Minimum $10 USDT required
+                    if usdt_balance < min_usdt_required:
+                        print(f"❌ Insufficient USDT for BUY order: ${usdt_balance:.2f} < ${min_usdt_required}")
+                        signal = "HOLD"
+                        reason = f"Insufficient USDT balance: ${usdt_balance:.2f}"
+                        print(f"🔄 Signal changed from BUY to HOLD due to insufficient USDT")
+                        
+                        # Log the balance-prevented buy signal
+                        log_signal_to_csv(
+                            "HOLD",
+                            current_price,
+                            indicators,
+                            f"Strategy {strategy} wanted BUY but insufficient USDT: ${usdt_balance:.2f}"
+                        )
+                        
+                        # Send Telegram notification about blocked buy signal
+                        if TELEGRAM_AVAILABLE:
+                            try:
+                                notify_signal("HOLD", symbol, current_price, indicators, 
+                                            f"BUY blocked - insufficient USDT: ${usdt_balance:.2f}")
+                            except Exception as telegram_error:
+                                print(f"Telegram balance notification failed: {telegram_error}")
+                        
+                        return signal
+                    else:
+                        print(f"✅ USDT balance check passed: ${usdt_balance:.2f} available")
+                else:
+                    print("⚠️ Client not available for USDT balance check")
+            except Exception as e:
+                print(f"⚠️ Error checking USDT balance: {e}")
+                # Continue with BUY signal if balance check fails
+        
         # Log strategy decision to signals log
         log_signal_to_csv(
             signal,
