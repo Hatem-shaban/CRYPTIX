@@ -437,6 +437,21 @@ def get_csv_trade_history(days=30):
                                "CSV_DATE_ERROR", "get_csv_trade_history", "WARNING")
                 # Continue without date filtering if there's an error
         
+        # Sort by timestamp to show newest first (similar to Signal History)
+        if not df.empty and 'timestamp' in df.columns:
+            try:
+                # Ensure timestamp column is properly parsed
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                df = df.dropna(subset=['timestamp'])
+                # Sort by timestamp, newest first
+                df = df.sort_values('timestamp', ascending=False)
+            except Exception as sort_error:
+                # Fallback: reverse the order to show newest first
+                df = df.iloc[::-1]
+        else:
+            # Fallback: reverse the order to show newest first
+            df = df.iloc[::-1]
+        
         # Convert to list of dictionaries
         return df.to_dict('records')
         
@@ -4023,7 +4038,7 @@ def view_trade_logs():
 <body>
     <div class="container">
         <a href="/logs" class="back-link">← Back to Logs</a>
-        <h1>📊 Trade History (Last 30 Days)</h1>
+        <h1>📊 Trade History (Last 30 Days - Newest First)</h1>
         
         {% if trades %}
         <table>
@@ -4335,8 +4350,15 @@ def view_error_logs():
             errors = []
         else:
             df = pd.read_csv(csv_files['errors'])
-            # Get last 50 errors
-            errors = df.tail(50).to_dict('records')
+            # Sort by timestamp to show newest first, then get last 50
+            if not df.empty and 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                df = df.dropna(subset=['timestamp'])
+                df = df.sort_values('timestamp', ascending=False).head(50)
+            else:
+                # Fallback: get last 50 errors and reverse order to show newest first
+                df = df.tail(50).iloc[::-1]
+            errors = df.to_dict('records')
         
         return render_template_string("""
 <!DOCTYPE html>
@@ -4361,7 +4383,7 @@ def view_error_logs():
 <body>
     <div class="container">
         <a href="/logs" class="back-link">← Back to Logs</a>
-        <h1>❌ Error Log (Last 50 Errors)</h1>
+        <h1>❌ Error Log (Last 50 Errors - Newest First)</h1>
         
         {% if errors %}
         <table>
