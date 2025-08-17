@@ -4122,257 +4122,165 @@ def view_signal_logs():
 
 @app.route('/logs/performance')
 def view_performance_logs():
-    """View daily performance CSV with enhanced UI"""
+    """View daily performance CSV in simple format"""
     try:
         csv_files = setup_csv_logging()
-        performance_history = []
+        performance_data = []
         
         if csv_files['performance'].exists():
             df = pd.read_csv(csv_files['performance'])
-            for _, row in df.iterrows():
-                performance_history.append({
-                    'date': row.get('date', 'Unknown'),
-                    'total_trades': row.get('total_trades', 0),
-                    'successful_trades': row.get('successful_trades', 0),
-                    'failed_trades': row.get('failed_trades', 0),
-                    'win_rate': row.get('win_rate', 0),
-                    'total_revenue': row.get('total_revenue', 0),
-                    'daily_pnl': row.get('daily_pnl', 0),
-                    'total_volume': row.get('total_volume', 0)
-                })
+            # Convert to list of dictionaries, newest first (reverse order)
+            performance_data = df.iloc[::-1].to_dict('records')
         
-        html_template = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Performance History - CRYPTIX AI Trading Bot</title>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="refresh" content="30">
-            <style>
-                body {{
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    margin: 0;
-                    padding: 20px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    min-height: 100vh;
-                }}
-                .container {{
-                    max-width: 1400px;
-                    margin: 0 auto;
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 15px;
-                    padding: 30px;
-                    backdrop-filter: blur(10px);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                }}
-                h1 {{
-                    text-align: center;
-                    margin-bottom: 30px;
-                    font-size: 2.5em;
-                    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-                }}
-                .nav-buttons {{
-                    display: flex;
-                    justify-content: center;
-                    gap: 15px;
-                    margin-bottom: 30px;
-                    flex-wrap: wrap;
-                }}
-                .nav-btn {{
-                    padding: 12px 25px;
-                    background: rgba(255, 255, 255, 0.2);
-                    border: none;
-                    border-radius: 25px;
-                    color: white;
-                    text-decoration: none;
-                    font-weight: bold;
-                    transition: all 0.3s ease;
-                    backdrop-filter: blur(5px);
-                }}
-                .nav-btn:hover {{
-                    background: rgba(255, 255, 255, 0.3);
-                    transform: translateY(-2px);
-                }}
-                .stats-summary {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 20px;
-                    margin-bottom: 30px;
-                }}
-                .stat-card {{
-                    background: rgba(255, 255, 255, 0.15);
-                    padding: 20px;
-                    border-radius: 10px;
-                    text-align: center;
-                    backdrop-filter: blur(5px);
-                }}
-                .stat-value {{
-                    font-size: 1.8em;
-                    font-weight: bold;
-                    margin-bottom: 5px;
-                }}
-                .stat-label {{
-                    opacity: 0.8;
-                    font-size: 0.9em;
-                }}
-                .table-container {{
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 10px;
-                    overflow: hidden;
-                    overflow-x: auto;
-                }}
-                table {{
-                    width: 100%;
-                    border-collapse: collapse;
-                    min-width: 800px;
-                }}
-                th, td {{
-                    padding: 15px;
-                    text-align: left;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                }}
-                th {{
-                    background: rgba(255, 255, 255, 0.2);
-                    font-weight: bold;
-                    position: sticky;
-                    top: 0;
-                    z-index: 10;
-                }}
-                tr:hover {{
-                    background: rgba(255, 255, 255, 0.1);
-                }}
-                .positive {{
-                    color: #4CAF50;
-                    font-weight: bold;
-                }}
-                .negative {{
-                    color: #f44336;
-                    font-weight: bold;
-                }}
-                .neutral {{
-                    color: #FFA726;
-                    font-weight: bold;
-                }}
-                .empty-state {{
-                    text-align: center;
-                    padding: 60px 20px;
-                    opacity: 0.7;
-                }}
-                .empty-state h3 {{
-                    margin-bottom: 10px;
-                }}
-                @media (max-width: 768px) {{
-                    .container {{
-                        padding: 15px;
-                        margin: 10px;
-                    }}
-                    h1 {{
-                        font-size: 2em;
-                    }}
-                    .nav-buttons {{
-                        justify-content: center;
-                    }}
-                    .nav-btn {{
-                        padding: 10px 20px;
-                        font-size: 0.9em;
-                    }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>📊 Performance History</h1>
-                
-                <div class="nav-buttons">
-                    <a href="/" class="nav-btn">🏠 Dashboard</a>
-                    <a href="/logs" class="nav-btn">📋 All Logs</a>
-                    <a href="/logs/trades" class="nav-btn">💰 Trades</a>
-                    <a href="/logs/signals" class="nav-btn">📡 Signals</a>
-                    <a href="/logs/performance" class="nav-btn" style="background: rgba(255, 255, 255, 0.3);">📊 Performance</a>
-                    <a href="/logs/errors" class="nav-btn">⚠️ Errors</a>
-                </div>
-                
-                <div class="stats-summary">
-                    <div class="stat-card">
-                        <div class="stat-value">{len(performance_history)}</div>
-                        <div class="stat-label">Total Records</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{format_cairo_time()}</div>
-                        <div class="stat-label">Last Updated (Cairo)</div>
-                    </div>
-                </div>
-                
-                <div class="table-container">
-        """
+        return render_template_string("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Performance</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            background: #f5f5f5;
+            padding: 10px;
+        }
+        .container { 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 15px; 
+            border-radius: 10px;
+            overflow-x: hidden;
+        }
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -15px;
+            padding: 0 15px;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 15px; 
+            font-size: 0.85rem;
+            min-width: 800px;
+        }
+        th, td { 
+            padding: 10px 12px; 
+            border: 1px solid #ddd; 
+            text-align: left;
+            white-space: nowrap;
+        }
+        th { 
+            background: #f8f9fa; 
+            font-weight: bold; 
+            position: sticky; 
+            top: 0;
+            z-index: 1;
+        }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .back-link { 
+            display: inline-block; 
+            margin-bottom: 20px; 
+            padding: 12px 20px; 
+            background: #28a745; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        .back-link:hover {
+            background: #218838;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin: 15px 0;
+        }
+        .positive { color: #28a745; font-weight: bold; }
+        .negative { color: #dc3545; font-weight: bold; }
+        .neutral { color: #6c757d; font-weight: bold; }
         
-        if performance_history:
-            html_template += """
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Total Trades</th>
-                                <th>Successful</th>
-                                <th>Failed</th>
-                                <th>Win Rate %</th>
-                                <th>Total Revenue</th>
-                                <th>Daily P&L</th>
-                                <th>Total Volume</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            """
-            
-            for record in performance_history:
-                win_rate = float(record['win_rate'])
-                total_revenue = float(record['total_revenue'])
-                daily_pnl = float(record['daily_pnl'])
-                
-                win_rate_class = "positive" if win_rate >= 60 else "negative" if win_rate < 40 else "neutral"
-                revenue_class = "positive" if total_revenue > 0 else "negative" if total_revenue < 0 else "neutral"
-                pnl_class = "positive" if daily_pnl > 0 else "negative" if daily_pnl < 0 else "neutral"
-                
-                html_template += f"""
-                            <tr>
-                                <td>{record['date']}</td>
-                                <td>{record['total_trades']}</td>
-                                <td>{record['successful_trades']}</td>
-                                <td>{record['failed_trades']}</td>
-                                <td class="{win_rate_class}">{win_rate:.1f}%</td>
-                                <td class="{revenue_class}">${total_revenue:.2f}</td>
-                                <td class="{pnl_class}">${daily_pnl:.2f}</td>
-                                <td>${record['total_volume']:.2f}</td>
-                            </tr>
-                """
-            
-            html_template += """
-                        </tbody>
-                    </table>
-            """
-        else:
-            html_template += """
-                    <div class="empty-state">
-                        <h3>📊 No Performance Data Available</h3>
-                        <p>Performance metrics will appear here once the bot starts trading and generating reports.</p>
-                        <p>Performance data is logged periodically to track trading efficiency and profitability.</p>
-                    </div>
-            """
+        @media (max-width: 768px) {
+            body {
+                padding: 5px;
+            }
+            .container {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 1.5rem;
+                margin: 10px 0;
+            }
+            table {
+                font-size: 0.8rem;
+            }
+            th, td {
+                padding: 8px 10px;
+            }
+            .back-link {
+                width: 100%;
+                text-align: center;
+                box-sizing: border-box;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/logs" class="back-link">← Back to Logs</a>
+        <h1>📊 Daily Performance (CSV Format)</h1>
         
-        html_template += """
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-        return html_template
+        {% if performance_data %}
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Total Trades</th>
+                        <th>Successful Trades</th>
+                        <th>Failed Trades</th>
+                        <th>Win Rate (%)</th>
+                        <th>Total Revenue</th>
+                        <th>Daily P&L</th>
+                        <th>Total Volume</th>
+                        <th>Max Drawdown</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in performance_data %}
+                    <tr>
+                        <td>{{ row.date }}</td>
+                        <td>{{ row.total_trades }}</td>
+                        <td>{{ row.successful_trades }}</td>
+                        <td>{{ row.failed_trades }}</td>
+                        <td class="{{ 'positive' if row.win_rate > 60 else 'negative' if row.win_rate < 40 else 'neutral' }}">
+                            {{ "%.1f"|format(row.win_rate) }}%
+                        </td>
+                        <td class="{{ 'positive' if row.total_revenue > 0 else 'negative' if row.total_revenue < 0 else 'neutral' }}">
+                            ${{ "%.2f"|format(row.total_revenue) }}
+                        </td>
+                        <td class="{{ 'positive' if row.daily_pnl > 0 else 'negative' if row.daily_pnl < 0 else 'neutral' }}">
+                            ${{ "%.2f"|format(row.daily_pnl) }}
+                        </td>
+                        <td>${{ "%.2f"|format(row.total_volume) }}</td>
+                        <td>{{ "%.2f"|format(row.max_drawdown) if row.max_drawdown else '0.00' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p>No daily performance data found. Performance data will appear here once the bot starts trading and logging daily summaries.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
+        """, performance_data=performance_data)
         
     except Exception as e:
-        return f"<h1>Error loading performance logs: {str(e)}</h1>"
+        return f"Error loading performance logs: {e}"
 
 @app.route('/logs/errors')
 def view_error_logs():
